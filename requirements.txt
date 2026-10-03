@@ -1,0 +1,31 @@
+# ── Groq (cloud ASR + LLM translation — one API key covers both) ─────────────
+# Set GROQ_API_KEY in .env to enable; local Whisper / NLLB still work without it.
+groq==0.13.1
+
+# ── Core ASR (local fallback — not needed if using Groq) ──────────────────────
+faster-whisper==1.1.1
+
+# ── Voice Activity Detection ──────────────────────────────────────────────────
+silero-vad==5.1.2          # Silero VAD with the model bundled (works offline)
+
+# ── Translation (local) ───────────────────────────────────────────────────────
+# NLLB-200 and MarianMT both come via transformers + sentencepiece
+transformers==4.44.2
+sentencepiece==0.2.0
+# torch is needed by both silero-vad and transformers; install the CPU build by
+# default — replace with the CUDA wheel if you have a GPU:
+#   pip install torch==2.5.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+torch>=2.3.1
+
+# ── Web server + WebSocket ────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+websockets==13.0.1          # used by FastAPI's WS support
+httpx==0.27.2               # async HTTP client for the HLS proxy
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1        # loads .env into os.environ
+numpy>=1.24               # audio array handling (compatible with torch 2.3)
+
+# ── Tests (optional) ──────────────────────────────────────────────────────────
+# pytest

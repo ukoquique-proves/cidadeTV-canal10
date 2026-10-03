@@ -1,0 +1,461 @@
+Collecting groq==0.13.1
+  Using cached groq-0.13.1-py3-none-any.whl.metadata (14 kB)
+Collecting faster-whisper==1.1.1
+  Using cached faster_whisper-1.1.1-py3-none-any.whl.metadata (16 kB)
+Collecting silero-vad==5.1.2
+  Using cached silero_vad-5.1.2-py3-none-any.whl.metadata (7.9 kB)
+Collecting transformers==4.44.2
+  Using cached transformers-4.44.2-py3-none-any.whl.metadata (43 kB)
+Collecting sentencepiece==0.2.0
+  Using cached sentencepiece-0.2.0.tar.gz (2.6 MB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting torch
+  Using cached torch-2.14.1-cp313-cp313-manylinux_2_28_x86_64.whl.metadata (37 kB)
+Collecting fastapi==0.115.0
+  Using cached fastapi-0.115.0-py3-none-any.whl.metadata (27 kB)
+Collecting uvicorn==0.30.6 (from uvicorn[standard]==0.30.6)
+  Using cached uvicorn-0.30.6-py3-none-any.whl.metadata (6.6 kB)
+Collecting websockets==13.0.1
+  Using cached websockets-13.0.1-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.7 kB)
+Collecting httpx==0.27.2
+  Using cached httpx-0.27.2-py3-none-any.whl.metadata (7.1 kB)
+Collecting python-dotenv==1.0.1
+  Using cached python_dotenv-1.0.1-py3-none-any.whl.metadata (23 kB)
+Collecting numpy
+  Using cached numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+Collecting anyio<5,>=3.5.0 (from groq==0.13.1)
+  Using cached anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+Collecting distro<2,>=1.7.0 (from groq==0.13.1)
+  Using cached distro-1.9.0-py3-none-any.whl.metadata (6.8 kB)
+Collecting pydantic<3,>=1.9.0 (from groq==0.13.1)
+  Using cached pydantic-2.13.5-py3-none-any.whl.metadata (110 kB)
+Collecting sniffio (from groq==0.13.1)
+  Using cached sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+Collecting typing-extensions<5,>=4.10 (from groq==0.13.1)
+  Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting certifi (from httpx==0.27.2)
+  Using cached certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+Collecting httpcore==1.* (from httpx==0.27.2)
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting idna (from httpx==0.27.2)
+  Using cached idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+Collecting ctranslate2<5,>=4.0 (from faster-whisper==1.1.1)
+  Using cached ctranslate2-4.8.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (11 kB)
+Collecting huggingface-hub>=0.13 (from faster-whisper==1.1.1)
+  Using cached huggingface_hub-2.1.1-py3-none-any.whl.metadata (16 kB)
+Collecting tokenizers<1,>=0.13 (from faster-whisper==1.1.1)
+  Using cached tokenizers-0.23.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.8 kB)
+Collecting onnxruntime<2,>=1.14 (from faster-whisper==1.1.1)
+  Using cached onnxruntime-1.30.0-cp313-cp313-manylinux_2_28_x86_64.whl.metadata (5.7 kB)
+Collecting av>=11 (from faster-whisper==1.1.1)
+  Using cached av-19.0.1-cp312-abi3-manylinux_2_28_x86_64.whl.metadata (5.0 kB)
+Collecting tqdm (from faster-whisper==1.1.1)
+  Using cached tqdm-4.70.1-py3-none-any.whl.metadata (57 kB)
+Collecting torchaudio>=0.12.0 (from silero-vad==5.1.2)
+  Using cached torchaudio-2.11.0-cp313-cp313-manylinux_2_28_x86_64.whl.metadata (6.9 kB)
+Collecting filelock (from transformers==4.44.2)
+  Using cached filelock-4.0.9-py3-none-any.whl.metadata (2.0 kB)
+Collecting huggingface-hub>=0.13 (from faster-whisper==1.1.1)
+  Using cached huggingface_hub-0.36.2-py3-none-any.whl.metadata (15 kB)
+Requirement already satisfied: packaging>=20.0 in ./venv/lib/python3.13/site-packages (from transformers==4.44.2) (26.3)
+Collecting pyyaml>=5.1 (from transformers==4.44.2)
+  Using cached pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting regex!=2019.12.17 (from transformers==4.44.2)
+  Using cached regex-2026.9.29-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
+Collecting requests (from transformers==4.44.2)
+  Using cached requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+Collecting safetensors>=0.4.1 (from transformers==4.44.2)
+  Using cached safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
+Collecting tokenizers<1,>=0.13 (from faster-whisper==1.1.1)
+  Using cached tokenizers-0.19.1.tar.gz (321 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Installing backend dependencies: started
+  Installing backend dependencies: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting starlette<0.39.0,>=0.37.2 (from fastapi==0.115.0)
+  Using cached starlette-0.38.6-py3-none-any.whl.metadata (6.0 kB)
+Collecting click>=7.0 (from uvicorn==0.30.6->uvicorn[standard]==0.30.6)
+  Using cached click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+Collecting h11>=0.8 (from uvicorn==0.30.6->uvicorn[standard]==0.30.6)
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting httptools>=0.5.0 (from uvicorn[standard]==0.30.6)
+  Using cached httptools-0.8.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]==0.30.6)
+  Using cached uvloop-0.23.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.1 kB)
+Collecting watchfiles>=0.13 (from uvicorn[standard]==0.30.6)
+  Using cached watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Collecting fsspec>=2023.5.0 (from huggingface-hub>=0.13->faster-whisper==1.1.1)
+  Using cached fsspec-2026.9.0-py3-none-any.whl.metadata (10 kB)
+Collecting hf-xet<2.0.0,>=1.1.3 (from huggingface-hub>=0.13->faster-whisper==1.1.1)
+  Using cached hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+Collecting flatbuffers (from onnxruntime<2,>=1.14->faster-whisper==1.1.1)
+  Using cached flatbuffers-25.12.19-py2.py3-none-any.whl.metadata (1.0 kB)
+Collecting protobuf>=4.25.8 (from onnxruntime<2,>=1.14->faster-whisper==1.1.1)
+  Using cached protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl.metadata (595 bytes)
+Collecting annotated-types>=0.6.0 (from pydantic<3,>=1.9.0->groq==0.13.1)
+  Using cached annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.46.5 (from pydantic<3,>=1.9.0->groq==0.13.1)
+  Using cached pydantic_core-2.46.5-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+Collecting typing-inspection>=0.4.2 (from pydantic<3,>=1.9.0->groq==0.13.1)
+  Using cached typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
+Requirement already satisfied: setuptools>=77.0.3 in ./venv/lib/python3.13/site-packages (from torch) (84.0.0)
+Collecting sympy>=1.13.3 (from torch)
+  Using cached sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+Collecting networkx>=2.5.1 (from torch)
+  Using cached networkx-3.7-py3-none-any.whl.metadata (6.7 kB)
+Collecting jinja2 (from torch)
+  Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+Collecting cuda-toolkit==13.0.3 (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached cuda_toolkit-13.0.3.0-py2.py3-none-any.whl.metadata (17 kB)
+Collecting cuda-bindings<14,>=13.0.3 (from torch)
+  Using cached cuda_bindings-13.4.3-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting nvidia-cudnn-cu13==9.24.0.43 (from torch)
+  Using cached nvidia_cudnn_cu13-9.24.0.43-py3-none-manylinux_2_27_x86_64.whl.metadata (1.9 kB)
+Collecting nvidia-cusparselt-cu13==0.8.1 (from torch)
+  Using cached nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl.metadata (12 kB)
+Collecting nvidia-nccl-cu13==2.30.7 (from torch)
+  Using cached nvidia_nccl_cu13-2.30.7-py3-none-manylinux_2_18_x86_64.whl.metadata (2.1 kB)
+Collecting nvidia-nvshmem-cu13==3.4.5 (from torch)
+  Using cached nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.1 kB)
+Collecting triton~=3.8.0 (from torch)
+  Using cached triton-3.8.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (978 bytes)
+Collecting nvidia-cublas==13.1.1.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+Collecting nvidia-cuda-nvrtc==13.0.88.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)
+Collecting nvidia-cuda-runtime==13.0.96.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+Collecting nvidia-cufft==12.0.0.61.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+Collecting nvidia-nvjitlink<14,>=13.0.88 (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_nvjitlink-13.4.92-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.8 kB)
+Collecting nvidia-cufile==1.15.1.6.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+Collecting nvidia-cuda-cupti==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl.metadata (1.7 kB)
+Collecting nvidia-curand==10.4.0.35.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)
+Collecting nvidia-cusolver==12.0.4.66.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+Collecting nvidia-cusparse==12.6.3.3.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+Collecting nvidia-nvtx==13.0.85.* (from cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3; platform_system == "Linux"->torch)
+  Using cached nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl.metadata (1.8 kB)
+Collecting cuda-pathfinder>=1.4.2 (from cuda-bindings<14,>=13.0.3->torch)
+  Using cached cuda_pathfinder-1.8.3-py3-none-any.whl.metadata (1.9 kB)
+Collecting mpmath<1.4,>=1.1.0 (from sympy>=1.13.3->torch)
+  Using cached mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+Collecting MarkupSafe>=2.0 (from jinja2->torch)
+  Using cached markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
+Collecting charset_normalizer<4,>=2 (from requests->transformers==4.44.2)
+  Using cached charset_normalizer-3.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+Collecting urllib3<3,>=1.26 (from requests->transformers==4.44.2)
+  Using cached urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+Using cached groq-0.13.1-py3-none-any.whl (109 kB)
+Using cached httpx-0.27.2-py3-none-any.whl (76 kB)
+Using cached faster_whisper-1.1.1-py3-none-any.whl (1.1 MB)
+Using cached silero_vad-5.1.2-py3-none-any.whl (5.0 MB)
+Using cached transformers-4.44.2-py3-none-any.whl (9.5 MB)
+Using cached fastapi-0.115.0-py3-none-any.whl (94 kB)
+Using cached uvicorn-0.30.6-py3-none-any.whl (62 kB)
+Using cached websockets-13.0.1-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (158 kB)
+Using cached python_dotenv-1.0.1-py3-none-any.whl (19 kB)
+Using cached anyio-4.15.1-py3-none-any.whl (132 kB)
+Using cached ctranslate2-4.8.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (39.6 MB)
+Using cached distro-1.9.0-py3-none-any.whl (20 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Using cached huggingface_hub-0.36.2-py3-none-any.whl (566 kB)
+Using cached hf_xet-1.6.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.5 MB)
+Using cached onnxruntime-1.30.0-cp313-cp313-manylinux_2_28_x86_64.whl (23.6 MB)
+Using cached pydantic-2.13.5-py3-none-any.whl (472 kB)
+Using cached pydantic_core-2.46.5-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+Using cached pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
+Using cached starlette-0.38.6-py3-none-any.whl (71 kB)
+Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Using cached torch-2.14.1-cp313-cp313-manylinux_2_28_x86_64.whl (554.6 MB)
+Using cached cuda_toolkit-13.0.3.0-py2.py3-none-any.whl (2.5 kB)
+Using cached nvidia_cudnn_cu13-9.24.0.43-py3-none-manylinux_2_27_x86_64.whl (553.1 MB)
+Using cached nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl (170.1 MB)
+Using cached nvidia_nccl_cu13-2.30.7-py3-none-manylinux_2_18_x86_64.whl (216.0 MB)
+Using cached nvidia_nvshmem_cu13-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (60.4 MB)
+Using cached cuda_bindings-13.4.3-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (6.9 MB)
+Using cached nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl (423.1 MB)
+Using cached nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl (10.7 MB)
+Using cached nvidia_cuda_nvrtc-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (90.2 MB)
+Using cached nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (2.2 MB)
+Using cached nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (214.1 MB)
+Using cached nvidia_cufile-1.15.1.6-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.2 MB)
+Using cached nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl (59.5 MB)
+Using cached nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl (200.9 MB)
+Using cached nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (145.9 MB)
+Using cached nvidia_nvjitlink-13.4.92-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (42.5 MB)
+Using cached nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl (148 kB)
+Using cached triton-3.8.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (248.0 MB)
+Using cached numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.7 MB)
+Using cached annotated_types-0.8.0-py3-none-any.whl (13 kB)
+Using cached av-19.0.1-cp312-abi3-manylinux_2_28_x86_64.whl (35.0 MB)
+Using cached click-8.5.0-py3-none-any.whl (125 kB)
+Using cached cuda_pathfinder-1.8.3-py3-none-any.whl (62 kB)
+Using cached fsspec-2026.9.0-py3-none-any.whl (221 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Using cached httptools-0.8.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (486 kB)
+Using cached idna-3.20-py3-none-any.whl (69 kB)
+Using cached networkx-3.7-py3-none-any.whl (2.1 MB)
+Using cached protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl (343 kB)
+Using cached regex-2026.9.29-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (807 kB)
+Using cached safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (516 kB)
+Using cached sympy-1.14.0-py3-none-any.whl (6.3 MB)
+Using cached mpmath-1.3.0-py3-none-any.whl (536 kB)
+Using cached torchaudio-2.11.0-cp313-cp313-manylinux_2_28_x86_64.whl (1.8 MB)
+Using cached tqdm-4.70.1-py3-none-any.whl (80 kB)
+Using cached typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+Using cached uvloop-0.23.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.5 MB)
+Using cached watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+Using cached certifi-2026.7.22-py3-none-any.whl (136 kB)
+Using cached filelock-4.0.9-py3-none-any.whl (110 kB)
+Using cached flatbuffers-25.12.19-py2.py3-none-any.whl (26 kB)
+Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+Using cached markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (23 kB)
+Using cached requests-2.34.2-py3-none-any.whl (73 kB)
+Using cached charset_normalizer-3.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (254 kB)
+Using cached urllib3-2.8.0-py3-none-any.whl (135 kB)
+Using cached sniffio-1.3.1-py3-none-any.whl (10 kB)
+Building wheels for collected packages: sentencepiece, tokenizers
+  Building wheel for sentencepiece (pyproject.toml): started
+  Building wheel for sentencepiece (pyproject.toml): finished with status 'error'
+  error: subprocess-exited-with-error
+  
+  × Building wheel for sentencepiece (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> [120 lines of output]
+      /initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/dist.py:318: UserWarning: Unknown distribution option: 'test_suite'
+        warnings.warn(msg)
+      /initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+      !!
+      
+              ********************************************************************************
+              Please consider removing the following classifiers in favor of a SPDX license expression:
+      
+              License :: OSI Approved :: Apache Software License
+      
+              See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+              ********************************************************************************
+      
+      !!
+        self._finalize_license_expression()
+      running bdist_wheel
+      running build
+      running build_py
+      creating build/lib.linux-x86_64-cpython-313/sentencepiece
+      copying src/sentencepiece/__init__.py -> build/lib.linux-x86_64-cpython-313/sentencepiece
+      copying src/sentencepiece/_version.py -> build/lib.linux-x86_64-cpython-313/sentencepiece
+      copying src/sentencepiece/sentencepiece_model_pb2.py -> build/lib.linux-x86_64-cpython-313/sentencepiece
+      copying src/sentencepiece/sentencepiece_pb2.py -> build/lib.linux-x86_64-cpython-313/sentencepiece
+      running build_ext
+      /bin/sh: line 1: pkg-config: command not found
+      ./build_bundled.sh: line 21: cmake: command not found
+      ./build_bundled.sh: line 22: cmake: command not found
+      Traceback (most recent call last):
+        File "/root/TVcidade10/tv10-/venv/lib/python3.13/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
+          main()
+          ~~~~^^
+        File "/root/TVcidade10/tv10-/venv/lib/python3.13/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 373, in main
+          json_out["return_val"] = hook(**hook_input["kwargs"])
+                                   ~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/root/TVcidade10/tv10-/venv/lib/python3.13/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 280, in build_wheel
+          return _build_backend().build_wheel(
+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+              wheel_directory, config_settings, metadata_directory
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          )
+          ^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/build_meta.py", line 441, in build_wheel
+          return _build(['bdist_wheel', '--dist-info-dir', str(metadata_directory)])
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/build_meta.py", line 429, in _build
+          return self._build_with_temp_dir(
+                 ~~~~~~~~~~~~~~~~~~~~~~~~~^
+              cmd,
+              ^^^^
+          ...<3 lines>...
+              self._arbitrary_args(config_settings),
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          )
+          ^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/build_meta.py", line 410, in _build_with_temp_dir
+          self.run_setup()
+          ~~~~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/build_meta.py", line 520, in run_setup
+          super().run_setup(setup_script=setup_script)
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/build_meta.py", line 317, in run_setup
+          exec(code, locals())  # noqa: S102 # exec is intentional here
+          ~~~~^^^^^^^^^^^^^^^^
+        File "<string>", line 169, in <module>
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/__init__.py", line 117, in setup
+          return distutils.core.setup(**attrs)  # type: ignore[return-value]
+                 ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/core.py", line 168, in setup
+          return run_commands(dist)
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/core.py", line 184, in run_commands
+          dist.run_commands()
+          ~~~~~~~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/dist.py", line 1028, in run_commands
+          self.run_command(cmd)
+          ~~~~~~~~~~~~~~~~^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/dist.py", line 1106, in run_command
+          super().run_command(command)
+          ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/dist.py", line 1047, in run_command
+          cmd_obj.run()
+          ~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/command/bdist_wheel.py", line 385, in run
+          self.run_command("build")
+          ~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/cmd.py", line 342, in run_command
+          self.distribution.run_command(command)
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/dist.py", line 1106, in run_command
+          super().run_command(command)
+          ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/dist.py", line 1047, in run_command
+          cmd_obj.run()
+          ~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/command/build.py", line 137, in run
+          self.run_command(cmd_name)
+          ~~~~~~~~~~~~~~~~^^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/cmd.py", line 342, in run_command
+          self.distribution.run_command(command)
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/dist.py", line 1106, in run_command
+          super().run_command(command)
+          ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/dist.py", line 1047, in run_command
+          cmd_obj.run()
+          ~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/command/build_ext.py", line 95, in run
+          _build_ext.run(self)
+          ~~~~~~~~~~~~~~^^^^^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/command/build_ext.py", line 382, in run
+          self.build_extensions()
+          ~~~~~~~~~~~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/command/build_ext.py", line 498, in build_extensions
+          self._build_extensions_serial()
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+        File "/initrd/mnt/tmpfs/tmp/pip-build-env-46wt0dzs/overlay/lib/python3.13/site-packages/setuptools/_distutils/command/build_ext.py", line 524, in _build_extensions_serial
+          self.build_extension(ext)
+          ~~~~~~~~~~~~~~~~~~~~^^^^^
+        File "<string>", line 87, in build_extension
+        File "/usr/lib/python3.13/subprocess.py", line 419, in check_call
+          raise CalledProcessError(retcode, cmd)
+      subprocess.CalledProcessError: Command '['./build_bundled.sh', '0.2.0']' returned non-zero exit status 127.
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for sentencepiece
+  Building wheel for tokenizers (pyproject.toml): started
+  Building wheel for tokenizers (pyproject.toml): finished with status 'error'
+  error: subprocess-exited-with-error
+  
+  × Building wheel for tokenizers (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> [82 lines of output]
+      Python reports SOABI: cpython-313-x86_64-linux-gnu
+      Computed rustc target triple: x86_64-unknown-linux-gnu
+      Installation directory: /root/.cache/puccinialin
+      Rustup already downloaded
+      Installing rust to /root/.cache/puccinialin/rustup
+      warn: it looks like you have an existing rustup settings file at:
+      warn: /root/.cache/puccinialin/rustup/settings.toml
+      info: profile set to minimal
+      info: setting default host tuple to x86_64-unknown-linux-gnu
+      warn: Updating existing toolchain, profile choice will be ignored
+      info: syncing channel updates for stable-x86_64-unknown-linux-gnu
+      info: default toolchain set to stable-x86_64-unknown-linux-gnu
+      Checking if cargo is installed
+      cargo 1.99.0 (5f94df478 2026-08-27)
+      Rust not found, installing into a temporary directory
+      Running `maturin pep517 build-wheel -i /root/TVcidade10/tv10-/venv/bin/python3 --compatibility off`
+      ⚠️  Warning: `project.version` field is required in pyproject.toml unless it is present in the `project.dynamic` list
+      🍹 Building a mixed python/rust project
+      🐍 Found CPython 3.13 at /root/TVcidade10/tv10-/venv/bin/python3
+      🔗 Found pyo3 bindings
+      📡 Using build options features, bindings from pyproject.toml
+         Compiling proc-macro2 v1.0.81
+         Compiling unicode-ident v1.0.12
+         Compiling autocfg v1.2.0
+         Compiling libc v0.2.153
+         Compiling target-lexicon v0.12.14
+      error: linking with `cc` failed: exit status: 1
+        |
+        = note:  "cc" "-m64" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/proc-macro2-451d1e5e31cd032f/rustcpbfLBH/symbols.o" "<2 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/proc-macro2-451d1e5e31cd032f/rustcpbfLBH/raw-dylibs" "-B<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/bin/gcc-ld" "-fuse-ld=lld" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib" "-o" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/proc-macro2-451d1e5e31cd032f/build_script_build-451d1e5e31cd032f" "-Wl,--gc-sections" "-pie" "-Wl,-z,relro,-z,now" "-Wl,--strip-debug" "-nodefaultlibs"
+        = note: some arguments are omitted. use `--verbose` to show all linker arguments
+        = note: rust-lld: error: cannot open Scrt1.o: No such file or directory
+                rust-lld: error: cannot open crti.o: No such file or directory
+                rust-lld: error: unable to find library -lutil
+                rust-lld: error: unable to find library -lrt
+                rust-lld: error: unable to find library -lpthread
+                rust-lld: error: unable to find library -lm
+                rust-lld: error: unable to find library -ldl
+                rust-lld: error: unable to find library -lc
+                rust-lld: error: cannot open crtn.o: No such file or directory
+                collect2: error: ld returned 1 exit status
+      
+      
+      error: could not compile `proc-macro2` (build script) due to 1 previous error
+      warning: build failed, waiting for other jobs to finish...
+      error: linking with `cc` failed: exit status: 1
+        |
+        = note:  "cc" "-m64" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/libc-f19295a3a0685996/rustc8wYXnf/symbols.o" "<2 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/libc-f19295a3a0685996/rustc8wYXnf/raw-dylibs" "-B<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/bin/gcc-ld" "-fuse-ld=lld" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib" "-o" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/libc-f19295a3a0685996/build_script_build-f19295a3a0685996" "-Wl,--gc-sections" "-pie" "-Wl,-z,relro,-z,now" "-Wl,--strip-debug" "-nodefaultlibs"
+        = note: some arguments are omitted. use `--verbose` to show all linker arguments
+        = note: rust-lld: error: cannot open Scrt1.o: No such file or directory
+                rust-lld: error: cannot open crti.o: No such file or directory
+                rust-lld: error: unable to find library -lutil
+                rust-lld: error: unable to find library -lrt
+                rust-lld: error: unable to find library -lpthread
+                rust-lld: error: unable to find library -lm
+                rust-lld: error: unable to find library -ldl
+                rust-lld: error: unable to find library -lc
+                rust-lld: error: cannot open crtn.o: No such file or directory
+                collect2: error: ld returned 1 exit status
+      
+      
+      error: could not compile `libc` (build script) due to 1 previous error
+      error: linking with `cc` failed: exit status: 1
+        |
+        = note:  "cc" "-m64" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/target-lexicon-1a1d0ea40155c292/rustcJZdN8s/symbols.o" "<2 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/target-lexicon-1a1d0ea40155c292/rustcJZdN8s/raw-dylibs" "-B<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/bin/gcc-ld" "-fuse-ld=lld" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib" "-o" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/target/release/build/target-lexicon-1a1d0ea40155c292/build_script_build-1a1d0ea40155c292" "-Wl,--gc-sections" "-pie" "-Wl,-z,relro,-z,now" "-Wl,--strip-debug" "-nodefaultlibs"
+        = note: some arguments are omitted. use `--verbose` to show all linker arguments
+        = note: rust-lld: error: cannot open Scrt1.o: No such file or directory
+                rust-lld: error: cannot open crti.o: No such file or directory
+                rust-lld: error: unable to find library -lutil
+                rust-lld: error: unable to find library -lrt
+                rust-lld: error: unable to find library -lpthread
+                rust-lld: error: unable to find library -lm
+                rust-lld: error: unable to find library -ldl
+                rust-lld: error: unable to find library -lc
+                rust-lld: error: cannot open crtn.o: No such file or directory
+                collect2: error: ld returned 1 exit status
+      
+      
+      error: could not compile `target-lexicon` (build script) due to 1 previous error
+      💥 maturin failed
+        Caused by: Failed to build a native library through cargo
+        Caused by: Cargo build finished with "exit status: 101": `env -u CARGO PYO3_BUILD_EXTENSION_MODULE="1" PYO3_ENVIRONMENT_SIGNATURE="cpython-3.13-64bit" PYO3_PYTHON="/root/TVcidade10/tv10-/venv/bin/python3" PYTHON_SYS_EXECUTABLE="/root/TVcidade10/tv10-/venv/bin/python3" "cargo" "rustc" "--profile" "release" "--features" "pyo3/extension-module" "--message-format" "json-render-diagnostics" "--manifest-path" "/initrd/mnt/tmpfs/tmp/pip-install-gc93bs02/tokenizers_43e4696d0e1644cb964d34eac8f3f803/bindings/python/Cargo.toml" "--lib"`
+      Error: command ['maturin', 'pep517', 'build-wheel', '-i', '/root/TVcidade10/tv10-/venv/bin/python3', '--compatibility', 'off'] returned non-zero exit status 1
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for tokenizers
+Failed to build sentencepiece tokenizers
+error: failed-wheel-build-for-install
+
+× Failed to build installable wheels for some pyproject.toml based projects
+╰─> sentencepiece, tokenizers

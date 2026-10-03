@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TV Cidade 10 — Legendas em Tempo Real</title>
+
+  <!-- HLS.js — loaded from CDN, no build step needed -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+  <script src="/static/captions.js"></script>
+
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #e8e8e8;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100dvh;
+      padding: 1rem;
+      gap: 1rem;
+    }
+
+    h1 {
+      font-size: clamp(1rem, 3vw, 1.4rem);
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      color: #aaa;
+    }
+
+    /* ── Player wrapper — keeps 16:9 ratio ─────────────────────────── */
+    .player-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.7);
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+    }
+
+    /* ── Caption overlay ────────────────────────────────────────────── */
+    /*
+     * The overlay sits at the very bottom of the video frame.
+     * Two lines:  ES (top line, slightly dimmer)
+     *             PT (bottom line, full white — the original language)
+     * Both have a semi-transparent black background so they stay readable
+     * over any colour in the video.
+     */
+    #caption-overlay {
+      position: absolute;
+      bottom: 4%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15em;
+      pointer-events: none;    /* don't block video controls */
+      z-index: 10;
+    }
+
+    .caption-line {
+      display: inline-block;   /* shrink-wrap to text width */
+      padding: 0.18em 0.55em;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.62);
+      font-size: clamp(0.75rem, 2.2vw, 1.15rem);
+      line-height: 1.35;
+      text-align: center;
+      white-space: pre-wrap;
+      max-width: 100%;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+      transition: opacity 0.2s ease;
+    }
+
+    #caption-pt {
+      color: #ffffff;          /* full white — original (spoken) language */
+    }
+
+    #caption-es {
+      color: #d0d0d0;          /* slightly dimmer — translation */
+      font-size: clamp(0.68rem, 1.9vw, 1rem);
+    }
+
+    /* Hide a line when it has no content */
+    .caption-line:empty { display: none; }
+
+    /* ── Status bar ─────────────────────────────────────────────────── */
+    #status {
+      font-size: 0.78rem;
+      color: #666;
+    }
+    #status span {
+      padding: 0.2em 0.6em;
+      border-radius: 3px;
+      background: #1a1a1a;
+    }
+    #status .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+      background: #555;
+    }
+    #status .dot.green  { background: #22c55e; }
+    #status .dot.yellow { background: #eab308; }
+    #status .dot.red    { background: #ef4444; }
+
+    /* ── Controls ───────────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    label {
+      font-size: 0.82rem;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] { accent-color: #22c55e; }
+
+    button {
+      background: #222;
+      border: 1px solid #444;
+      color: #ccc;
+      padding: 0.35em 1em;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background 0.15s;
+    }
+    button:hover { background: #333; }
+
+    input[type="number"] {
+      width: 4.2em; background: #151515; color: #ccc;
+      border: 1px solid #444; border-radius: 4px; padding: 0.25em 0.4em;
+    }
+    #sync-info { font-size: 0.78rem; color: #777; text-align: center; max-width: 720px; }
+    #sync-info.warn { color: #eab308; }
+  </style>
+</head>
+<body>
+
+  <h1>TV Cidade 10 — Legendas em Tempo Real</h1>
+
+  <!-- Video player -->
+  <div class="player-wrap">
+    <video id="video" controls playsinline></video>
+
+    <!-- Dual-line caption overlay: ES (translation) on top, PT (original) below -->
+    <div id="caption-overlay">
+      <div id="caption-es" class="caption-line" aria-label="Subtítulo en español"></div>
+      <div id="caption-pt" class="caption-line" aria-label="Legenda em português"></div>
+    </div>
+  </div>
+
+  <!-- Status row -->
+  <div id="status">
+    <span>
+      <i class="dot" id="ws-dot"></i> WebSocket: <b id="ws-status">desconectado</b>
+      &nbsp;|&nbsp;
+      <i class="dot" id="hls-dot"></i> Stream: <b id="hls-status">aguardando</b>
+    </span>
+  </div>
+
+  <!-- User controls -->
+  <div class="controls">
+    <label><input type="checkbox" id="show-pt" checked /> Mostrar PT</label>
+    <label><input type="checkbox" id="show-es" checked /> Mostrar ES</label>
+    <label>Atraso do vídeo
+      <input type="number" id="sync-input" min="4" max="40" step="1" /> s
+    </label>
+    <button id="btn-apply-sync" title="Reconecta o stream com o novo atraso">Aplicar</button>
+    <label>Ajuste das legendas
+      <button id="btn-earlier" title="Mostrar legendas 0,5 s mais cedo">−0,5 s</button>
+      <b id="offset-label">0,0 s</b>
+      <button id="btn-later" title="Mostrar legendas 0,5 s mais tarde">+0,5 s</button>
+    </label>
+    <button id="btn-reload">Reconectar stream</button>
+    <button id="btn-clear">Limpar legendas</button>
+  </div>
+  <div id="sync-info">aguardando legendas…</div>
+
+  <script>
+    // ── Small helpers ─────────────────────────────────────────────────────
+    function store(key, value) { try { localStorage.setItem(key, String(value)); } catch (e) {} }
+    function load(key, fallback) {
+      try { const v = localStorage.getItem(key); return v === null ? fallback : v; }
+      catch (e) { return fallback; }
+    }
+
+    // ── Configuration ─────────────────────────────────────────────────────
+    // The player plays `liveSyncDuration` seconds behind the live edge.  That
+    // delay is what gives speech recognition + translation time to finish.
+    // Each caption says how long ago its speech started at the live edge
+    // (age_start); we show it after (player latency − age_start) seconds.
+    const params = new URLSearchParams(location.search);
+    const CONFIG = {
+      hlsSrc: '/proxy/playlist',
+      wsUrl: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/captions`,
+      liveSyncDuration: parseFloat(params.get('sync') || load('syncDuration', '10')) || 10,
+      captionOffset: parseFloat(load('captionOffset', '0')) || 0,   // + = later
+    };
+
+    // ── DOM refs ──────────────────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+    const video = $('video'), capPt = $('caption-pt'), capEs = $('caption-es');
+    const wsDot = $('ws-dot'), wsStatus = $('ws-status');
+    const hlsDot = $('hls-dot'), hlsStatus = $('hls-status');
+    const showPt = $('show-pt'), showEs = $('show-es');
+    const syncInput = $('sync-input'), offsetLabel = $('offset-label'), syncInfo = $('sync-info');
+
+    syncInput.value = CONFIG.liveSyncDuration;
+
+    // ── Caption scheduling ────────────────────────────────────────────────
+    const scheduler = new CaptionScheduler();
+    let hls = null;
+
+    function playerLatency() {
+      // seconds the playback position is behind the live edge
+      if (hls && Number.isFinite(hls.latency) && hls.latency > 0) return hls.latency;
+      return CONFIG.liveSyncDuration;
+    }
+
+    function render() {
+      const cur = scheduler.tick(performance.now());
+      capPt.textContent = cur && showPt.checked ? cur.pt : '';
+      capEs.textContent = cur && showEs.checked ? cur.es : '';
+    }
+    setInterval(render, 100);
+
+    function updateSyncInfo() {
+      const s = scheduler.stats;
+      offsetLabel.textContent = CONFIG.captionOffset.toFixed(1).replace('.', ',') + ' s';
+      if (!s.total) { syncInfo.textContent = 'aguardando legendas…'; syncInfo.className = ''; return; }
+      const lateShare = s.late / s.total;
+      let text = `${s.total} legendas · atraso do player ≈ ${playerLatency().toFixed(1)} s · ` +
+                 `${s.late} chegaram atrasadas` +
+                 (s.late ? ` (em média ${scheduler.lateAvgS.toFixed(1)} s)` : '');
+      if (lateShare > 0.2) {
+        text += ` — aumente o "Atraso do vídeo" em ~${Math.ceil(scheduler.lateAvgS + 1)} s.`;
+        syncInfo.className = 'warn';
+      } else syncInfo.className = '';
+      syncInfo.textContent = text;
+    }
+    setInterval(updateSyncInfo, 1000);
+
+    // ── WebSocket (a single reconnect path — no duplicate sockets) ────────
+    let ws = null, wsRetryDelay = 1000, wsTimer = null;
+
+    function scheduleReconnect() {
+      if (wsTimer) return;
+      wsTimer = setTimeout(() => { wsTimer = null; connectWS(); }, wsRetryDelay);
+      wsRetryDelay = Math.min(wsRetryDelay * 2, 16000);
+    }
+
+    function connectWS() {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      ws = new WebSocket(CONFIG.wsUrl);
+      ws.onopen = () => {
+        wsRetryDelay = 1000;
+        wsDot.className = 'dot green';
+        wsStatus.textContent = 'conectado';
+      };
+      ws.onmessage = (evt) => {
+        let data;
+        try { data = JSON.parse(evt.data); } catch (e) { return; }
+        if (data.ping) return;
+        scheduler.push(data, performance.now(), playerLatency(), CONFIG.captionOffset);
+      };
+      ws.onerror = () => { try { ws.close(); } catch (e) {} };  // onclose does the retry
+      ws.onclose = () => {
+        wsDot.className = 'dot red';
+        wsStatus.textContent = 'reconectando…';
+        scheduleReconnect();
+      };
+    }
+
+    // ── HLS.js player ─────────────────────────────────────────────────────
+    function initHLS() {
+      if (hls) { hls.destroy(); hls = null; }
+
+      if (!Hls.isSupported()) {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {   // Safari
+          video.src = CONFIG.hlsSrc;
+          hlsDot.className = 'dot yellow';
+          hlsStatus.textContent = 'nativo (Safari) — sem controle de atraso';
+          video.play().catch(() => {});
+        } else {
+          hlsDot.className = 'dot red';
+          hlsStatus.textContent = 'não suportado';
+        }
+        return;
+      }
+
+      hls = new Hls({
+        liveSyncDuration: CONFIG.liveSyncDuration,
+        liveMaxLatencyDuration: CONFIG.liveSyncDuration + 8,
+        enableWorker: true,
+        lowLatencyMode: false,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
+      hls.loadSource(CONFIG.hlsSrc);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        hlsDot.className = 'dot green';
+        hlsStatus.textContent = 'ao vivo';
+        video.play().catch(() => { hlsStatus.textContent = 'clique em play'; });
+      });
+
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
+        if (!data.fatal) return;
+        hlsDot.className = 'dot red';
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hlsStatus.textContent = 'rede — tentando de novo…';
+          hls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hlsStatus.textContent = 'erro de mídia — recuperando…';
+          hls.recoverMediaError();
+        } else {
+          hlsStatus.textContent = 'erro — reconectando…';
+          setTimeout(initHLS, 3000);
+        }
+      });
+    }
+
+    // ── Controls ──────────────────────────────────────────────────────────
+    showPt.addEventListener('change', render);
+    showEs.addEventListener('change', render);
+
+    $('btn-apply-sync').addEventListener('click', () => {
+      const v = parseFloat(syncInput.value);
+      if (!Number.isFinite(v) || v < 4 || v > 40) return;
+      CONFIG.liveSyncDuration = v;
+      store('syncDuration', v);
+      scheduler.clear();
+      initHLS();
+    });
+    function nudge(delta) {
+      CONFIG.captionOffset = Math.round((CONFIG.captionOffset + delta) * 10) / 10;
+      store('captionOffset', CONFIG.captionOffset);
+      updateSyncInfo();
+    }
+    $('btn-earlier').addEventListener('click', () => nudge(-0.5));
+    $('btn-later').addEventListener('click', () => nudge(+0.5));
+    $('btn-reload').addEventListener('click', initHLS);
+    $('btn-clear').addEventListener('click', () => scheduler.clear());
+
+    // ── Boot ──────────────────────────────────────────────────────────────
+    connectWS();
+    initHLS();
+  </script>
+</body>
+</html>
