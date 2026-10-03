@@ -19,7 +19,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       class FakeHls { constructor(c) { this.cfg = c; this.latency = 10; this.handlers = {}; hlsInstances.push(this); }
         static isSupported() { return true; }
         loadSource() {} attachMedia() {} destroy() {} on(e, f) { this.handlers[e] = f; } startLoad() {} recoverMediaError() {} }
-      FakeHls.Events = { MANIFEST_PARSED: 'm', ERROR: 'e' }; FakeHls.ErrorTypes = { NETWORK_ERROR: 'n', MEDIA_ERROR: 'd' };
+      FakeHls.Events = { MANIFEST_PARSED: 'm', ERROR: 'e', FRAG_LOADED: 'f' }; FakeHls.ErrorTypes = { NETWORK_ERROR: 'n', MEDIA_ERROR: 'd' };
       w.Hls = FakeHls;
       w.HTMLMediaElement.prototype.play = () => Promise.resolve();
     },
@@ -61,5 +61,33 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   d.getElementById('btn-later').click(); d.getElementById('btn-later').click();
   assert.strictEqual(d.getElementById('offset-label').textContent, '1,0 s');
   console.log('ok   apply delay + nudge');
+
+  // 6) clicking the label TEXT or the value must not trigger the -0.5 s button (was a <label>)
+  const before = d.getElementById('offset-label').textContent;
+  d.getElementById('offset-label').click();
+  d.querySelector('[aria-label="Ajuste das legendas"] > span').click();
+  assert.strictEqual(d.getElementById('offset-label').textContent, before, 'clicking text changed the offset');
+  console.log('ok   clicking the offset text does nothing');
+
+  // 7) "Aplicar" and "Limpar" reset the late-caption stats (warning must not linger)
+  sockets[1].onmessage({ data: JSON.stringify({ pt: 'y', es: '', age_start: 30, age_end: 28 }) });
+  await sleep(1200);
+  assert.ok(/atrasadas/.test(d.getElementById('sync-info').textContent) && /[1-9] chegaram/.test(d.getElementById('sync-info').textContent));
+  d.getElementById('btn-clear').click();
+  assert.strictEqual(d.getElementById('sync-info').textContent, 'aguardando legendas…');
+  sockets[1].onmessage({ data: JSON.stringify({ pt: 'z', es: '', age_start: 30, age_end: 28 }) });
+  d.getElementById('btn-apply-sync').click();
+  assert.strictEqual(d.getElementById('sync-info').textContent, 'aguardando legendas…');
+  console.log('ok   stats reset by Limpar and Aplicar');
+
+  // 8) stream dot: red after a fatal error, green again once a fragment loads
+  const h = hlsInstances[hlsInstances.length - 1];
+  h.handlers['e']({}, { fatal: true, type: 'n' });
+  assert.strictEqual(d.getElementById('hls-dot').className, 'dot red');
+  h.handlers['f']();
+  assert.strictEqual(d.getElementById('hls-dot').className, 'dot green');
+  assert.strictEqual(d.getElementById('hls-status').textContent, 'ao vivo');
+  h.handlers['f']();                                       // later fragments must not rewrite status
+  console.log('ok   stream dot recovers');
   w.close(); process.exit(0);
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

@@ -17,14 +17,17 @@ HLS ──ffmpeg──► PCM 16 kHz ──► VAD ──► ASR ─────
     └─ HLS.js (atrasado N s do ao vivo, via /proxy/playlist) + captions.js agenda legendas
 ```
 
+Todas as chamadas Groq passam pelo `groq_client.py`, que mantém um único cliente
+HTTP reutilizável (pool de conexões) compartilhado entre ASR e tradução.
+
 ### Backends disponíveis
 
 | Etapa | Com `GROQ_API_KEY` (recomendado) | Sem `GROQ_API_KEY` (fallback local) |
 |---|---|---|
 | ASR | Groq `whisper-large-v3-turbo` (~0,1–0,3 s/frase) | `faster-whisper` CPU (~4–8 s/frase) |
 | Tradução PT→ES | Groq LLM `openai/gpt-oss-20b` (~0,3–0,7 s) | NLLB-200 CPU (~0,5–2 s) |
-| VAD | `EnergyDetector` (sem torch) ou Silero (com torch) | idem |
-| Latência total | ~5–7 s | ~10–15 s |
+| VAD | Silero (com torch) ou `EnergyDetector` (sem torch, segmentação pior) | idem |
+| Latência total medida | ~10–15 s (dominada pelo buffering HLS) | ~10–15 s |
 
 ### Como a sincronização funciona
 
@@ -32,7 +35,8 @@ O reconhecimento só pode começar quando uma frase termina, então a legenda se
 da fala. O player é atrasado de propósito (`Atraso do vídeo`, padrão 10 s) para dar tempo.
 
 * `capture.py` mede, para cada trecho de áudio, *quando* ele estava na borda ao vivo
-  (`AudioClock`: filtro de mínimo, porque o HLS entrega o áudio em blocos de um segmento inteiro).
+  (`AudioClock`: filtro de mínimo sobre uma janela deslizante de 90 s, porque o HLS entrega
+  o áudio em blocos de um segmento inteiro).
 * O servidor envia cada legenda com `age_start` / `age_end` = "há quantos segundos, na borda ao vivo,
   esta fala começou / terminou". Idades em vez de horários: relógios do servidor e do navegador
   não precisam coincidir.
@@ -44,14 +48,14 @@ da fala. O player é atrasado de propósito (`Atraso do vídeo`, padrão 10 s) p
 
 ### Quanto atraso o vídeo precisa?
 
-O que o atraso tem de cobrir (por legenda): duração da frase + 0,5 s de silêncio (`VAD_SILENCE_MS`)
-+ até um segmento HLS inteiro de "jitter" + tempo do ASR + tempo da tradução.
+O que o atraso tem de cobrir (por legenda): duração da frase + `VAD_SILENCE_MS` (0,5 s)
++ até um segmento HLS inteiro de "jitter" (~8–10 s) + tempo do ASR + tempo da tradução.
 Cada legenda registra isso no log:
 ```
-caption ready: speech started 7.4s ago … (seg 5.1s, ASR 0.7s, translation 0.7s)
+caption ready: speech started 7.4s ago … (seg 5.1s, ASR 0.3s, translation 0.7s)
 ```
-**1–2 s não bastam** com este desenho (reconhecimento por frases); espere 8–12 s com Groq,
-10–15 s sem. Veja `LATENCY_PROBLEM.md` para guia completo.
+**1–2 s não bastam** com este desenho (reconhecimento por frases). Medido com Groq: 10–15 s.
+Veja `LATENCY_PROBLEM.md` para guia completo.
 
 ## Instalação rápida (com Groq)
 
@@ -60,7 +64,7 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ffmpeg -version          # ffmpeg precisa estar instalado no sistema
 cp .env.example .env
-# Edite .env e preencha GROQ_API_KEY com a chave de https://console.groq.com/keys
+# Edite .env: preencha GROQ_API_KEY com a chave de https://console.groq.com/keys
 python main.py           # abre http://localhost:8000
 ```
 
@@ -87,13 +91,20 @@ python main.py
 |---|---|---|
 | `GROQ_API_KEY` | — | Chave da API. Quando preenchida, ativa Groq para ASR e tradução. Obtenha em https://console.groq.com/keys |
 | `GROQ_TRANSLATE_MODEL` | `openai/gpt-oss-20b` | Modelo LLM para PT→ES. Veja modelos disponíveis com `groq.models.list()` |
+| `GROQ_REASONING_EFFORT` | `low` | Só modelos `gpt-oss`: `low` \| `medium` \| `high` \| `none`. Menos raciocínio = menos latência |
+| `GROQ_TIMEOUT_S` | `8` | Timeout por requisição à Groq (s). Uma chamada travada para todo o pipeline |
+| `GROQ_MAX_RETRIES` | `1` | Retentativas do SDK em 429 / 5xx / erro de rede |
+
+> **Nota sobre o placeholder:** se `GROQ_API_KEY` ainda tiver o valor de exemplo
+> `gsk_xxx…` do `.env.example`, o sistema detecta e ignora, usando os modelos locais.
+> Blank (`GROQ_API_KEY=`) também conta como "não configurado".
 
 ### Stream
 
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `STREAM_URL` | URL da TV Cidade 10 | Stream HLS de entrada |
-| `PROXY_ALLOWED_HOSTS` | — | Hosts extras que o proxy pode acessar. `.dominio.com` = subdomínios |
+| `PROXY_ALLOWED_HOSTS` | — | Hosts extras que o proxy pode acessar. `.dominio.com` = subdomínios. Pode ficar em branco para este canal. |
 
 ### Servidor web
 
@@ -123,13 +134,16 @@ python main.py
 | `VAD_PREROLL_MS` | `300` | Áudio mantido antes do onset detectado |
 | `VAD_THRESHOLD` | `0.5` | Limiar do Silero VAD (0–1) |
 
-### Tradução local (ignorado quando `GROQ_API_KEY` está preenchido)
+### Tradução
 
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `ENABLE_TRANSLATION` | `true` | `false` = só PT, sem ES |
-| `TRANSLATION_BACKEND` | `nllb` | `groq` \| `nllb` \| `marian` (via inglês, não testado) \| `llm` |
-| `TRANSLATION_DEVICE` | `auto` | `auto` \| `cpu` \| `cuda` |
+| `TRANSLATION_BACKEND` | `groq` com chave, senão `nllb` | `groq` \| `nllb` \| `marian` (via inglês, não testado) \| `llm` |
+| `TRANSLATION_DEVICE` | `auto` | `auto` \| `cpu` \| `cuda` (só backends locais) |
+
+`ENABLE_TRANSLATION` e `TRANSLATION_BACKEND` valem **com ou sem** `GROQ_API_KEY`.
+O backend `llm` genérico requer também `LLM_API_URL`, `LLM_API_KEY` e `LLM_MODEL`.
 
 ## Opções de linha de comando
 
@@ -143,12 +157,29 @@ python main.py --stream-url URL  # substitui STREAM_URL
 python main.py --host 0.0.0.0    # expõe na rede local
 ```
 
+`--fast` define o modelo como `tiny` a menos que `--model` também seja passado; `--model`
+tem prioridade.
+
+## Resiliência do stream
+
+Quando o stream cai, `capture.py` usa **backoff exponencial**:
+
+- Primeira falha sem áudio: aguarda 4 s.
+- Cada falha seguinte: dobra o intervalo (4 → 8 → 16 → 32 → 60 s).
+- Teto de 60 s — continua tentando indefinidamente.
+- Se o stream cair no meio de uma sessão (após já ter produzido áudio): volta para 2 s
+  (glitch transitório, não uma queda prolongada).
+- O stderr do ffmpeg é capturado e logado: `capture — ffmpeg error: Connection refused`.
+
 ## Segurança do proxy
 
 O proxy HLS só serve o `STREAM_URL` configurado; toda URL reescrita leva uma assinatura HMAC com
 segredo aleatório por execução; e cada requisição de saída (inclusive redirecionamentos) só pode ir
 para o host do stream ou para `PROXY_ALLOWED_HOSTS`. Se o canal usar outro host para os segmentos e
 o player mostrar 403/502, adicione-o em `PROXY_ALLOWED_HOSTS`.
+
+Clientes WebSocket lentos ou travados são desconectados automaticamente após `2 s` sem consumir
+mensagens, para que um browser preso não atrrase os outros.
 
 ## Testes
 
@@ -170,5 +201,6 @@ TV Cidade 10, e HLS.js num navegador de verdade.
   (há filtros de alucinação em `transcribe.py`, mas não são perfeitos).
 * Se o pipeline for mais lento que o tempo real, o log avisa (`falling behind`) e legendas antigas
   são descartadas. Use um modelo menor, Groq, ou GPU.
-* Quando o stream está fora do ar, o sistema tenta reconectar com backoff exponencial
-  (2 s → 4 → 8 → … → 60 s); o log mostra `ffmpeg error: Connection refused` e o intervalo atual.
+* O Silero VAD requer `torch`. Sem ele, o sistema usa `EnergyDetector` (detecção por RMS),
+  que segmenta por energia sonora e não por pausa de fala — funciona, mas produz mais cortes
+  no meio de frases. Instale `silero-vad` no venv para restaurar o VAD completo.

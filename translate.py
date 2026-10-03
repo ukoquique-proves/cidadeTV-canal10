@@ -5,7 +5,7 @@ Supports four backends, chosen by the TRANSLATION_BACKEND env var:
 
   groq    (default when GROQ_API_KEY is set)
             — Groq LLM API (same key as ASR, no extra setup).
-              Model: GROQ_TRANSLATE_MODEL (default: llama-3.1-8b-instant).
+              Model: GROQ_TRANSLATE_MODEL (default: openai/gpt-oss-20b).
               ~100-400 ms per segment, highest quality, needs internet.
   nllb    (default when GROQ_API_KEY is unset)
             — facebook/nllb-200-distilled-600M via HuggingFace transformers.
@@ -42,6 +42,8 @@ import logging
 import os
 import time
 
+from groq_client import is_transient
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -54,7 +56,7 @@ def _default_backend() -> str:
 
 
 def _active_backend() -> str:
-    return os.environ.get("TRANSLATION_BACKEND", _default_backend()).lower()
+    return (os.environ.get("TRANSLATION_BACKEND") or _default_backend()).strip().lower()
 
 
 # ---------------------------------------------------------------------------
@@ -71,16 +73,30 @@ _marian_pipeline = None
 _GROQ_TRANSLATE_MODEL_DEFAULT = "openai/gpt-oss-20b"
 
 
+def _reasoning_kwargs(model: str) -> dict:
+    """Ask reasoning models (gpt-oss) to think as little as possible.
+
+    Translation needs no chain of thought, and thinking time is pure latency on a
+    live stream.  GROQ_REASONING_EFFORT = low (default) | medium | high | none.
+    Sent via extra_body so it also works with the pinned groq==0.13.1, whose
+    typed signature predates the parameter; other models would reject it, so it
+    is only added for gpt-oss.
+    """
+    effort = (os.environ.get("GROQ_REASONING_EFFORT") or "low").strip().lower()
+    if effort in ("none", "off") or not model.startswith("openai/gpt-oss"):
+        return {}
+    return {"extra_body": {"reasoning_effort": effort}}
+
+
 def _translate_groq_sync(text: str) -> str:
     """
     Translate PT→ES via Groq LLM (synchronous, runs in a thread executor).
     Uses the same GROQ_API_KEY as the ASR backend — no extra credentials.
     """
-    from groq import Groq
+    from groq_client import get_client
 
-    api_key = os.environ["GROQ_API_KEY"]
-    model = os.environ.get("GROQ_TRANSLATE_MODEL", _GROQ_TRANSLATE_MODEL_DEFAULT)
-    client = Groq(api_key=api_key)
+    model = os.environ.get("GROQ_TRANSLATE_MODEL") or _GROQ_TRANSLATE_MODEL_DEFAULT
+    client = get_client()
 
     completion = client.chat.completions.create(
         model=model,
@@ -97,6 +113,7 @@ def _translate_groq_sync(text: str) -> str:
         ],
         temperature=0.2,
         max_tokens=512,
+        **_reasoning_kwargs(model),
     )
     return (completion.choices[0].message.content or "").strip()
 
@@ -287,7 +304,8 @@ class Translator:
                     try:
                         es_text = await translate_text_async(pt_text)
                     except Exception as exc:
-                        logger.error("Translation error: %s", exc, exc_info=True)
+                        logger.error("Translation error: %s", exc,
+                                     exc_info=not is_transient(exc))
                         es_text = ""
                 else:
                     es_text = ""

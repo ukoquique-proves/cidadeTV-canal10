@@ -65,9 +65,14 @@ def stream_url() -> str:
 # WebSocket connection manager
 # ---------------------------------------------------------------------------
 
+_SEND_TIMEOUT = 2.0    # a client that can't take a message within this is "slow"
+_CLOSE_TIMEOUT = 2.0   # ...and we don't wait longer than this for it to close
+
+
 class ConnectionManager:
     def __init__(self) -> None:
         self._connections: set[WebSocket] = set()
+        self._closing: set[asyncio.Task] = set()   # keeps background closes alive
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
@@ -75,8 +80,28 @@ class ConnectionManager:
         logger.info("WS client connected (total=%d)", len(self._connections))
 
     def disconnect(self, ws: WebSocket) -> None:
-        self._connections.discard(ws)
-        logger.info("WS client disconnected (total=%d)", len(self._connections))
+        if ws in self._connections:
+            self._connections.discard(ws)
+            logger.info("WS client disconnected (total=%d)", len(self._connections))
+
+    async def _close_quietly(self, ws: WebSocket) -> None:
+        try:
+            await asyncio.wait_for(ws.close(code=1011), timeout=_CLOSE_TIMEOUT)
+        except Exception:  # noqa: BLE001 — already closed / hung: nothing more to do
+            pass
+
+    def _drop(self, ws: WebSocket) -> None:
+        """Forget a client that failed a send AND close its socket.
+
+        Removing it from the set alone would leave the connection open: its handler
+        keeps pinging it, so the browser shows "connected" but never receives
+        another caption.  Closing makes the page's onclose handler reconnect.
+        Closing runs in the background so a hung client can't delay the broadcast.
+        """
+        self.disconnect(ws)
+        task = asyncio.ensure_future(self._close_quietly(ws))
+        self._closing.add(task)
+        task.add_done_callback(self._closing.discard)
 
     async def broadcast(self, message: dict) -> None:
         if not self._connections:
@@ -85,7 +110,7 @@ class ConnectionManager:
 
         async def _send(ws: WebSocket):
             try:
-                await asyncio.wait_for(ws.send_text(text), timeout=2)
+                await asyncio.wait_for(ws.send_text(text), timeout=_SEND_TIMEOUT)
                 return None
             except Exception:  # noqa: BLE001
                 return ws
@@ -93,7 +118,7 @@ class ConnectionManager:
         # concurrently, so one slow client can't delay the others
         for dead in await asyncio.gather(*(_send(ws) for ws in list(self._connections))):
             if dead is not None:
-                self.disconnect(dead)
+                self._drop(dead)
 
     @property
     def count(self) -> int:
@@ -231,7 +256,8 @@ def create_app() -> FastAPI:
                     # we only send, but reading lets us notice disconnects at once
                     await asyncio.wait_for(ws.receive_text(), timeout=30)
                 except asyncio.TimeoutError:
-                    await ws.send_text('{"ping":true}')
+                    # bounded: a stuck client must not park this handler forever
+                    await asyncio.wait_for(ws.send_text('{"ping":true}'), timeout=_SEND_TIMEOUT)
         except (WebSocketDisconnect, Exception):  # noqa: BLE001
             pass
         finally:

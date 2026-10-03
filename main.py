@@ -13,11 +13,40 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
-load_dotenv(Path(__file__).parent / ".env")  # before importing the pipeline modules
+_ENV_FILE = Path(__file__).parent / ".env"
+load_dotenv(_ENV_FILE)  # before importing the pipeline modules
+
+_PLACEHOLDER_KEY = re.compile(r"^gsk_x+$", re.IGNORECASE)
+
+
+def _normalize_env() -> list[str]:
+    """Clean up .env quirks that would silently break the defaults.
+
+    * ``FOO=`` (blank) in .env means "use the default".  Left as an empty string it
+      would beat ``os.environ.get("FOO", default)`` and e.g. select backend "".
+    * ``GROQ_API_KEY=gsk_xxxx`` (the .env.example placeholder) counts as "set" and
+      would route everything to Groq with an invalid key (401 on every segment).
+
+    Returns warnings to log once logging is configured.
+    """
+    notes: list[str] = []
+    for key, val in dotenv_values(_ENV_FILE).items():
+        if (val is None or not val.strip()) and not os.environ.get(key, "").strip():
+            os.environ.pop(key, None)
+    key = os.environ.get("GROQ_API_KEY", "")
+    if key and _PLACEHOLDER_KEY.match(key.strip()):
+        os.environ.pop("GROQ_API_KEY")
+        notes.append("GROQ_API_KEY is still the placeholder from .env.example — "
+                     "ignoring it and using local models.")
+    return notes
+
+
+_ENV_NOTES = _normalize_env()
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -26,12 +55,14 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("main")
+for _note in _ENV_NOTES:
+    logger.warning(_note)
 
 from capture import DEFAULT_QUEUE_CHUNKS, clock, start_capture, stop_capture  # noqa: E402
 from captions import expand, to_message  # noqa: E402
 from server import create_app, push_caption  # noqa: E402
 from transcribe import Transcriber, _resolve_config as _whisper_config  # noqa: E402
-from translate import Translator  # noqa: E402
+from translate import _GROQ_TRANSLATE_MODEL_DEFAULT, Translator, _active_backend  # noqa: E402
 from vad import VadSegmenter  # noqa: E402
 
 
@@ -49,8 +80,9 @@ def _parse_args() -> argparse.Namespace:
         "--fast",
         action="store_true",
         help=(
-            "Lowest-latency profile: tiny Whisper model, no translation, "
-            "VAD_MAX_SEGMENT_MS=3000. Good for testing sync before accuracy matters."
+            "Lowest-latency profile: tiny Whisper model (unless --model is given), no "
+            "translation, VAD_MAX_SEGMENT_MS=3000. Overrides .env. Good for testing "
+            "sync before accuracy matters."
         ),
     )
     return p.parse_args()
@@ -101,12 +133,21 @@ def build_pipeline(args: argparse.Namespace) -> list[asyncio.Task]:
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
         logger.info("ASR backend   : Groq (whisper-large-v3-turbo) ✓")
-        logger.info("Translation   : Groq LLM (%s) ✓",
-                    os.environ.get("GROQ_TRANSLATE_MODEL", "llama-3.1-8b-instant"))
     else:
         _dev, _cmp, _mdl = _whisper_config()
         logger.info("ASR backend   : local faster-whisper %s on %s (%s)", _mdl, _dev, _cmp)
-        logger.info("Translation   : %s (local)", os.environ.get("TRANSLATION_BACKEND", "nllb"))
+
+    # Translation line reflects what will actually run (ENABLE_TRANSLATION and
+    # TRANSLATION_BACKEND are honored with or without a Groq key).
+    if os.environ.get("ENABLE_TRANSLATION", "true").lower() != "true":
+        logger.info("Translation   : disabled (PT only)")
+    elif _active_backend() == "groq":
+        logger.info("Translation   : Groq LLM (%s) ✓",
+                    os.environ.get("GROQ_TRANSLATE_MODEL") or _GROQ_TRANSLATE_MODEL_DEFAULT)
+    else:
+        logger.info("Translation   : %s", _active_backend())
+
+    if not groq_key:
         logger.warning(
             "GROQ_API_KEY not set — using local models. "
             "Add GROQ_API_KEY to .env for much lower latency on CPU hardware."
@@ -140,9 +181,8 @@ async def run_server(host: str, port: int) -> None:
     await uvicorn.Server(config).serve()
 
 
-async def _main() -> None:
-    args = _parse_args()
-    # CLI overrides go into the environment so every module sees them
+def _apply_cli_overrides(args: argparse.Namespace) -> None:
+    """CLI overrides go into the environment so every module sees them."""
     if args.stream_url:
         os.environ["STREAM_URL"] = args.stream_url
     if args.model:
@@ -150,11 +190,19 @@ async def _main() -> None:
     if args.no_translate:
         os.environ["ENABLE_TRANSLATION"] = "false"
     if args.fast:
-        # Override only what isn't already explicitly set
-        os.environ.setdefault("WHISPER_MODEL", "tiny")
+        # An explicit CLI flag beats .env (which usually sets WHISPER_MODEL and
+        # VAD_MAX_SEGMENT_MS, so setdefault() would never apply); --model still wins.
+        if not args.model:
+            os.environ["WHISPER_MODEL"] = "tiny"
         os.environ["ENABLE_TRANSLATION"] = "false"
-        os.environ.setdefault("VAD_MAX_SEGMENT_MS", "3000")
-        logger.info("--fast mode: tiny model, no translation, VAD_MAX_SEGMENT_MS=3000")
+        os.environ["VAD_MAX_SEGMENT_MS"] = "3000"
+        logger.info("--fast mode: %s model, no translation, VAD_MAX_SEGMENT_MS=3000",
+                    os.environ["WHISPER_MODEL"])
+
+
+async def _main() -> None:
+    args = _parse_args()
+    _apply_cli_overrides(args)
 
     tasks = build_pipeline(args)
     if not args.capture_only:

@@ -65,3 +65,14 @@ run(function clear_empties_everything() {
   s.clear();
   assert.strictEqual(s.tick(20 * S), null);
 });
+
+run(function reset_stats_forgets_late_counts_but_keeps_queue_behavior() {
+  const s = new CaptionScheduler();
+  s.push({ pt: 'late', es: '', age_start: 14, age_end: 12 }, 0, 10, 0);   // arrives 4 s late
+  assert.strictEqual(s.stats.late, 1);
+  s.resetStats();
+  assert.deepStrictEqual(s.stats, { total: 0, late: 0, lateSumS: 0, dropped: 0 });
+  assert.strictEqual(s.lateAvgS, 0);
+  s.push({ pt: 'ok', es: '', age_start: 9.5, age_end: 9 }, 0, 10, 0);
+  assert.strictEqual(s.stats.total, 1);                                    // counting works afterwards
+});

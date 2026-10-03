@@ -5,6 +5,88 @@ Most recent entry first.
 
 ---
 
+## 2026-10-03 — page + docs refresh
+
+### Frontend polish
+- Updated the live caption page to better reflect the current stream and caption state.
+- Improved the browser-side caption handling so the UI keeps the latest translation flow visible and easier to follow.
+- Refined the page behavior around live updates and reconnect friendliness in the browser client.
+
+### Documentation refresh
+- Updated the project docs to align with the current Groq/local backend model, env handling, and operational notes.
+- Kept the runtime guidance, config examples, and latency notes consistent with the latest code and env conventions.
+- Included the latest environment setup and backend-selection guidance in the checked-in documentation.
+
+---
+
+## 2026-10-03 — Groq client integration
+
+### Added `groq_client.py`
+- Introduced a dedicated Groq client wrapper to centralize transcription and translation calls.
+- Keeps the Groq API usage isolated from the rest of the pipeline so the local fallback remains easy to reason about.
+- Makes model selection and request handling easier to test and reuse.
+
+### Updated transcription / translation flow
+- Wired the app to prefer the shared Groq client for both ASR and translation work when `GROQ_API_KEY` is configured.
+- Keeps the existing local faster-whisper / NLLB fallback intact when the key is missing.
+- Reduces duplicated request logic and keeps the backend selection consistent across modules.
+
+### Verification
+- The repo patch was applied cleanly and the new client file is present in the working tree.
+- The project continues to use the same env-driven backend selection pattern: Groq when configured, local stack otherwise.
+
+---
+
+## 2026-10-03 — env handling + slow-client resilience
+
+### Environment handling
+- Kept the local runtime secrets in the project-local `.env` / parent-folder env pattern, while preserving a repo-safe `.env.example` as the checked-in template.
+- Clarified that GitHub-specific variables should use underscores (`GITHUB_REPOSITORY`, `GITHUB_TOKEN`) and must not be used as runtime credentials in the application itself.
+- Documented the intended behavior for local secret storage and the difference between repository-safe examples and actual environment files.
+
+### WebSocket slow-client protection
+- Hardened the live caption broadcast path so one slow or hanging browser client no longer stalls the rest of the connected viewers.
+- Added per-client send timeouts and background socket cleanup so stale connections are dropped quietly instead of blocking the broadcast loop.
+- Keeps the page reconnect flow healthy when a browser falls behind or stops consuming updates.
+
+---
+
+## 2026-10-03 — Python 3.13 dependency fix
+
+The local install issue was caused by an incompatible dependency chain rather than a single package pin:
+
+- `transformers==4.44.2` forced a `tokenizers` version that had no Python 3.13 wheel.
+- `sentencepiece==0.2.0` was also too old for the modern Python runtime.
+- Pip therefore tried to build `tokenizers` from source and failed.
+
+### Fix applied
+- Updated `requirements.txt` to:
+  - `transformers==4.57.6`
+  - `sentencepiece==0.2.2`
+- This resolves to a compatible `tokenizers==0.22.2` wheel path on Python 3.13.
+
+### Verification
+We verified the actual local environment with:
+
+```bash
+cd /root/TVcidade10/tv10-
+. venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Result: `EXIT:0`
+
+Imports also succeeded in the venv:
+- `torch OK 2.14.1+cu130`
+- `transformers OK 4.57.6`
+- `sentencepiece OK 0.2.2`
+- `tokenizers OK 0.22.2`
+
+### Remaining note
+The earlier NVIDIA wheel metadata failure observed in the broader cross-platform simulation appears to be a simulation artifact rather than a real Linux install failure in this environment. We also started validating the NLLB PT→ES path using the newer `transformers` stack; the model download began successfully, but the full translation run was not yet completed at the time of writing.
+
+---
+
 ## 2026-10-03 — Documentation update
 
 Rewrote all `.md` files and `.env.example` to reflect the current state of the project.
@@ -248,7 +330,7 @@ from a previous version).  Corrected to `audio_start`/`audio_end`/`t_emit`/
 
 ---
 
-
+## 2026-10-03 — Stream investigation (findings)
 
 ### Stream health
 - URL `https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8` responds HTTP 200.

@@ -44,6 +44,8 @@ import wave
 
 import numpy as np
 
+from groq_client import is_transient as _is_transient
+
 logger = logging.getLogger(__name__)
 
 _whisper_model = None
@@ -107,10 +109,9 @@ def _transcribe_segment_groq(pcm_bytes: bytes) -> list[dict]:
 
     Uses the synchronous groq SDK (called from a thread executor).
     """
-    from groq import Groq  # lazy import — not needed when using local Whisper
+    from groq_client import get_client  # lazy — not needed when using local Whisper
 
-    api_key = os.environ["GROQ_API_KEY"]
-    client = Groq(api_key=api_key)
+    client = get_client()
 
     wav_bytes = _pcm_to_wav(pcm_bytes)
     prompt = os.environ.get("WHISPER_PROMPT") or None
@@ -297,7 +298,9 @@ class Transcriber:
                 try:
                     subs = await loop.run_in_executor(None, _transcribe_segment, pcm_bytes)
                 except Exception as exc:  # noqa: BLE001
-                    logger.error("Transcription error: %s", exc, exc_info=True)
+                    # rate limit / timeout / network: one line, no traceback flood
+                    logger.error("Transcription error: %s", exc,
+                                 exc_info=not _is_transient(exc))
                     continue
 
                 t_asr = time.time()

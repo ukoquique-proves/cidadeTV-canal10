@@ -130,7 +130,7 @@
       justify-content: center;
     }
 
-    label {
+    label, .ctl {
       font-size: 0.82rem;
       color: #888;
       display: flex;
@@ -138,6 +138,7 @@
       gap: 0.4em;
       cursor: pointer;
     }
+    .ctl { cursor: default; }   /* a group, not a <label>: clicking its text must do nothing */
 
     input[type="checkbox"] { accent-color: #22c55e; }
 
@@ -193,11 +194,12 @@
       <input type="number" id="sync-input" min="4" max="40" step="1" /> s
     </label>
     <button id="btn-apply-sync" title="Reconecta o stream com o novo atraso">Aplicar</button>
-    <label>Ajuste das legendas
+    <div class="ctl" role="group" aria-label="Ajuste das legendas">
+      <span>Ajuste das legendas</span>
       <button id="btn-earlier" title="Mostrar legendas 0,5 s mais cedo">−0,5 s</button>
       <b id="offset-label">0,0 s</b>
       <button id="btn-later" title="Mostrar legendas 0,5 s mais tarde">+0,5 s</button>
-    </label>
+    </div>
     <button id="btn-reload">Reconectar stream</button>
     <button id="btn-clear">Limpar legendas</button>
   </div>
@@ -332,8 +334,19 @@
         video.play().catch(() => { hlsStatus.textContent = 'clique em play'; });
       });
 
+      // After a fatal error the dot turns red; nothing turned it back.  The first
+      // fragment that loads after recovery means the stream is playing again.
+      let hlsFailed = false;
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (!hlsFailed) return;
+        hlsFailed = false;
+        hlsDot.className = 'dot green';
+        hlsStatus.textContent = 'ao vivo';
+      });
+
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
+        hlsFailed = true;
         hlsDot.className = 'dot red';
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
           hlsStatus.textContent = 'rede — tentando de novo…';
@@ -358,6 +371,8 @@
       CONFIG.liveSyncDuration = v;
       store('syncDuration', v);
       scheduler.clear();
+      scheduler.resetStats();      // old late-caption counts belong to the old delay
+      updateSyncInfo();
       initHLS();
     });
     function nudge(delta) {
@@ -368,7 +383,11 @@
     $('btn-earlier').addEventListener('click', () => nudge(-0.5));
     $('btn-later').addEventListener('click', () => nudge(+0.5));
     $('btn-reload').addEventListener('click', initHLS);
-    $('btn-clear').addEventListener('click', () => scheduler.clear());
+    $('btn-clear').addEventListener('click', () => {
+      scheduler.clear();
+      scheduler.resetStats();
+      updateSyncInfo();
+    });
 
     // ── Boot ──────────────────────────────────────────────────────────────
     connectWS();

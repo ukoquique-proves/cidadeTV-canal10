@@ -68,6 +68,8 @@
 
     clear() { this.queue = []; this.current = null; }
 
+    resetStats() { this.stats = { total: 0, late: 0, lateSumS: 0, dropped: 0 }; }
+
     get lateAvgS() { return this.stats.late ? this.stats.lateSumS / this.stats.late : 0; }
   }
 

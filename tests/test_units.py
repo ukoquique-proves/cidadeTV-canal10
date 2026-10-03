@@ -3,6 +3,7 @@ Unit tests — no models, no network.   Run:  python -m pytest tests -q
 """
 import asyncio
 import http.server
+import os
 import sys
 import threading
 from pathlib import Path
@@ -88,8 +89,8 @@ def test_vad_segments_start_times_and_no_audio_loss():
 def test_vad_forces_cut_on_long_speech():
     pcm = _silence(0.5) + _tone(20) + _silence(1)
     segs = asyncio.run(_run_vad(pcm))
-    assert len(segs) >= 3                          # 20 s with 8 s max → >= 3 segments
-    assert all(len(s[0]) / BYTES_PER_SEC <= 8.2 for s in segs)
+    assert len(segs) >= 4                          # 20 s with the 5 s default cap → >= 4 segments
+    assert all(len(s[0]) / BYTES_PER_SEC <= 5.2 for s in segs)
     covered = sum(len(s[0]) for s in segs) / BYTES_PER_SEC
     assert covered >= 19.5                         # nothing lost at the cuts
 
@@ -235,7 +236,7 @@ def _fake_groq(monkeypatch, response):
     import transcribe
 
     class FakeGroq:
-        def __init__(self, api_key):
+        def __init__(self, api_key, **_kw):
             self.audio = types.SimpleNamespace(
                 transcriptions=types.SimpleNamespace(create=lambda **kw: response))
 
@@ -279,3 +280,209 @@ def test_expand_never_loses_or_misaligns_text():
 def test_split_text_returns_exactly_n_pieces():
     assert len(captions.split_text("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b c d", 4)) == 4
     assert len(captions.split_text("um dois", 5)) == 2      # capped by word count
+
+
+# ── main.py: .env handling and --fast ────────────────────────────────────────
+
+def _clean_env(monkeypatch):
+    for k in ("GROQ_API_KEY", "TRANSLATION_BACKEND", "WHISPER_MODEL",
+              "VAD_MAX_SEGMENT_MS", "ENABLE_TRANSLATION", "STREAM_URL"):
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_env_placeholder_groq_key_is_ignored(monkeypatch, tmp_path):
+    import main
+    _clean_env(monkeypatch)
+    envfile = tmp_path / ".env"
+    envfile.write_text("GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx\n")
+    monkeypatch.setattr(main, "_ENV_FILE", envfile)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_xxxxxxxxxxxxxxxxxxxx")   # as load_dotenv would
+    notes = main._normalize_env()
+    assert "GROQ_API_KEY" not in os.environ and len(notes) == 1
+
+
+def test_env_real_groq_key_is_kept(monkeypatch, tmp_path):
+    import main
+    _clean_env(monkeypatch)
+    envfile = tmp_path / ".env"
+    envfile.write_text("GROQ_API_KEY=gsk_AbC123realkey\n")
+    monkeypatch.setattr(main, "_ENV_FILE", envfile)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_AbC123realkey")
+    assert main._normalize_env() == [] and os.environ["GROQ_API_KEY"] == "gsk_AbC123realkey"
+
+
+def test_env_blank_values_fall_back_to_defaults(monkeypatch, tmp_path):
+    import main
+    import translate
+    _clean_env(monkeypatch)
+    envfile = tmp_path / ".env"
+    envfile.write_text("TRANSLATION_BACKEND=\nWHISPER_MODEL=small\n")
+    monkeypatch.setattr(main, "_ENV_FILE", envfile)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "")      # what load_dotenv leaves behind
+    monkeypatch.setenv("WHISPER_MODEL", "small")
+    main._normalize_env()
+    assert "TRANSLATION_BACKEND" not in os.environ and os.environ["WHISPER_MODEL"] == "small"
+    assert translate._active_backend() == "nllb"
+
+
+def test_env_blank_in_file_does_not_clobber_shell_value(monkeypatch, tmp_path):
+    import main
+    _clean_env(monkeypatch)
+    envfile = tmp_path / ".env"
+    envfile.write_text("TRANSLATION_BACKEND=\n")
+    monkeypatch.setattr(main, "_ENV_FILE", envfile)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "marian")   # exported in the shell
+    main._normalize_env()
+    assert os.environ["TRANSLATION_BACKEND"] == "marian"
+
+
+def test_translate_blank_backend_uses_default(monkeypatch):
+    import translate
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "")
+    assert translate._active_backend() == "nllb"
+
+
+def test_fast_overrides_env_but_model_flag_wins(monkeypatch):
+    import argparse
+    import main
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("WHISPER_MODEL", "small")          # as .env.example sets it
+    monkeypatch.setenv("VAD_MAX_SEGMENT_MS", "5000")
+    ns = lambda **kw: argparse.Namespace(**{"stream_url": None, "model": None,
+                                            "no_translate": False, "fast": False, **kw})
+    main._apply_cli_overrides(ns(fast=True))
+    assert os.environ["WHISPER_MODEL"] == "tiny"
+    assert os.environ["VAD_MAX_SEGMENT_MS"] == "3000"
+    assert os.environ["ENABLE_TRANSLATION"] == "false"
+    monkeypatch.setenv("WHISPER_MODEL", "small")
+    main._apply_cli_overrides(ns(fast=True, model="medium"))
+    assert os.environ["WHISPER_MODEL"] == "medium"
+
+
+# ── server.py: slow WebSocket clients ────────────────────────────────────────
+
+class _FakeWS:
+    def __init__(self, hang_send=False, hang_close=False):
+        self.hang_send, self.hang_close = hang_send, hang_close
+        self.sent, self.closed = [], None
+
+    async def accept(self):
+        pass
+
+    async def send_text(self, text):
+        if self.hang_send:
+            await asyncio.sleep(3600)
+        self.sent.append(text)
+
+    async def close(self, code=1000):
+        if self.hang_close:
+            await asyncio.sleep(3600)
+        self.closed = code
+
+
+def test_broadcast_closes_slow_client_and_keeps_others(monkeypatch):
+    import server
+    monkeypatch.setattr(server, "_SEND_TIMEOUT", 0.05)
+
+    async def run():
+        mgr = server.ConnectionManager()
+        good, slow = _FakeWS(), _FakeWS(hang_send=True)
+        await mgr.connect(good)
+        await mgr.connect(slow)
+        await mgr.broadcast({"pt": "oi"})
+        await asyncio.sleep(0.05)                # let the background close run
+        return mgr, good, slow
+
+    mgr, good, slow = asyncio.run(run())
+    assert mgr.count == 1 and len(good.sent) == 1
+    assert slow.closed == 1011                   # socket really closed, so the page reconnects
+
+
+def test_broadcast_not_delayed_by_client_that_cannot_close(monkeypatch):
+    import server, time
+    monkeypatch.setattr(server, "_SEND_TIMEOUT", 0.05)
+    monkeypatch.setattr(server, "_CLOSE_TIMEOUT", 0.05)
+
+    async def run():
+        mgr = server.ConnectionManager()
+        await mgr.connect(_FakeWS(hang_send=True, hang_close=True))
+        t0 = time.monotonic()
+        await mgr.broadcast({"pt": "oi"})
+        elapsed = time.monotonic() - t0
+        await asyncio.sleep(0.1)                 # background close times out cleanly
+        return mgr, elapsed
+
+    mgr, elapsed = asyncio.run(run())
+    assert mgr.count == 0 and elapsed < 0.5 and not mgr._closing
+
+
+# ── groq_client.py / translate.py: shared client, timeouts, reasoning effort ──
+
+def _fake_groq_class(created):
+    class FakeGroq:
+        def __init__(self, api_key, **kw):
+            created.append({"api_key": api_key, **kw})
+    return FakeGroq
+
+
+def test_groq_client_is_reused_and_configured(monkeypatch):
+    import types
+    import groq_client
+    created = []
+    monkeypatch.setitem(sys.modules, "groq", types.SimpleNamespace(Groq=_fake_groq_class(created)))
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
+    monkeypatch.delenv("GROQ_TIMEOUT_S", raising=False)
+    monkeypatch.delenv("GROQ_MAX_RETRIES", raising=False)
+    a, b = groq_client.get_client(), groq_client.get_client()
+    assert a is b and len(created) == 1                     # one client, not one per request
+    assert created[0] == {"api_key": "k1", "timeout": 8.0, "max_retries": 1}
+    monkeypatch.setenv("GROQ_TIMEOUT_S", "3")
+    assert groq_client.get_client() is not a and created[-1]["timeout"] == 3.0
+    monkeypatch.setenv("GROQ_TIMEOUT_S", "garbage")          # bad value -> default, no crash
+    assert groq_client.get_client() and created[-1]["timeout"] == 8.0
+
+
+def test_groq_transient_error_classification():
+    import groq_client
+
+    class RateLimitError(Exception): pass
+    class APIConnectionError(Exception): pass
+    class APITimeoutError(APIConnectionError): pass
+    assert groq_client.is_transient(RateLimitError())
+    assert groq_client.is_transient(APITimeoutError())      # via base class
+    assert not groq_client.is_transient(ValueError("bug"))
+
+
+def test_reasoning_effort_only_for_gpt_oss(monkeypatch):
+    import translate
+    monkeypatch.delenv("GROQ_REASONING_EFFORT", raising=False)
+    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {"extra_body": {"reasoning_effort": "low"}}
+    assert translate._reasoning_kwargs("llama-3.1-8b-instant") == {}     # would be a 400
+    monkeypatch.setenv("GROQ_REASONING_EFFORT", "medium")
+    assert translate._reasoning_kwargs("openai/gpt-oss-120b")["extra_body"]["reasoning_effort"] == "medium"
+    monkeypatch.setenv("GROQ_REASONING_EFFORT", "none")
+    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {}
+
+
+def test_groq_translation_sends_reasoning_effort(monkeypatch):
+    import types
+    import translate
+    seen = {}
+
+    def create(**kw):
+        seen.update(kw)
+        msg = types.SimpleNamespace(content=" hola ")
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
+
+    class FakeGroq:
+        def __init__(self, api_key, **kw):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
+
+    monkeypatch.setitem(sys.modules, "groq", types.SimpleNamespace(Groq=FakeGroq))
+    monkeypatch.setenv("GROQ_API_KEY", "k-translate")
+    monkeypatch.delenv("GROQ_TRANSLATE_MODEL", raising=False)
+    monkeypatch.delenv("GROQ_REASONING_EFFORT", raising=False)
+    assert translate._translate_groq_sync("olá") == "hola"
+    assert seen["model"] == "openai/gpt-oss-20b"
+    assert seen["extra_body"] == {"reasoning_effort": "low"}
