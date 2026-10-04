@@ -154,6 +154,13 @@
     }
     button:hover { background: #333; }
 
+    /* Traducción - Minuto button — lights up while ES is shown for the next minute */
+    #btn-translate.peeking {
+      background: #1a3a1a;
+      border-color: #22c55e;
+      color: #22c55e;
+    }
+
     input[type="number"] {
       width: 4.2em; background: #151515; color: #ccc;
       border: 1px solid #444; border-radius: 4px; padding: 0.25em 0.4em;
@@ -202,6 +209,7 @@
     </div>
     <button id="btn-reload">Reconectar stream</button>
     <button id="btn-clear">Limpar legendas</button>
+    <button id="btn-translate" title="Mostra a tradução em espanhol por 1 minuto. Também aparece automaticamente enquanto o vídeo estiver pausado.">Traducción - Minuto</button>
   </div>
   <div id="sync-info">aguardando legendas…</div>
 
@@ -388,6 +396,48 @@
       scheduler.resetStats();
       updateSyncInfo();
     });
+
+    // ── Traducción - Minuto: show ES for 60 s without touching the showEs checkbox ──
+    //
+    // Three ways ES can be visible:
+    //   1. showEs checkbox is checked (always-on, existing behaviour)
+    //   2. peekActive — triggered by "Traducción - Minuto" button (times out after 60 s)
+    //   3. pausedEs  — video is paused (cleared on play)
+    //
+    // render() already runs every 100 ms, so we just need to change the
+    // condition it uses to decide whether to show ES.
+
+    let peekTimer = null;
+    let peekActive = false;
+    let pausedEs = false;
+
+    function esVisible() {
+      return showEs.checked || peekActive || pausedEs;
+    }
+
+    // Patch render() to use esVisible() instead of showEs.checked directly.
+    // We replace the render function defined above.
+    render = function () {
+      const cur = scheduler.tick(performance.now());
+      capPt.textContent = cur && showPt.checked ? cur.pt : '';
+      capEs.textContent = cur && esVisible()    ? cur.es : '';
+    };
+
+    function peekEs() {
+      peekActive = true;
+      $('btn-translate').classList.add('peeking');
+      clearTimeout(peekTimer);
+      peekTimer = setTimeout(() => {
+        peekActive = false;
+        $('btn-translate').classList.remove('peeking');
+      }, 60000);  // 60 s = roughly one minute of live captions
+    }
+
+    $('btn-translate').addEventListener('click', peekEs);
+
+    // Show ES while paused; hide again on play (unless checkbox or peek keep it on).
+    video.addEventListener('pause', () => { pausedEs = true;  });
+    video.addEventListener('play',  () => { pausedEs = false; });
 
     // ── Boot ──────────────────────────────────────────────────────────────
     connectWS();
