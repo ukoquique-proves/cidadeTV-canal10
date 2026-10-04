@@ -130,10 +130,10 @@ class VadSegmenter:
         self.in_queue = in_queue
         self.out_queue = out_queue
         self._detector = detector
-        self.min_speech_bytes = _ms_to_bytes(min_speech_ms or _env_int("VAD_MIN_SPEECH_MS", 500))
-        self.max_segment_bytes = _ms_to_bytes(max_segment_ms or _env_int("VAD_MAX_SEGMENT_MS", 5000))
-        self.silence_bytes = _ms_to_bytes(silence_ms or _env_int("VAD_SILENCE_MS", 500))
-        self.preroll_windows = _ms_to_bytes(preroll_ms or _env_int("VAD_PREROLL_MS", 300)) // WINDOW_BYTES
+        self.min_speech_bytes = _ms_to_bytes(min_speech_ms if min_speech_ms is not None else _env_int("VAD_MIN_SPEECH_MS", 500))
+        self.max_segment_bytes = _ms_to_bytes(max_segment_ms if max_segment_ms is not None else _env_int("VAD_MAX_SEGMENT_MS", 5000))
+        self.silence_bytes = _ms_to_bytes(silence_ms if silence_ms is not None else _env_int("VAD_SILENCE_MS", 500))
+        self.preroll_windows = _ms_to_bytes(preroll_ms if preroll_ms is not None else _env_int("VAD_PREROLL_MS", 300)) // WINDOW_BYTES
         self._task: asyncio.Task | None = None
 
         # --- state of the current stream ---
@@ -265,10 +265,13 @@ class VadSegmenter:
 
     def _flush(self) -> None:
         """Emit the buffered speech (if long enough) and reset segment state."""
-        if self._in_speech and len(self._speech) >= self.min_speech_bytes:
+        preroll_bytes = self.preroll_windows * WINDOW_BYTES
+        speech_only_bytes = len(self._speech) - preroll_bytes if self._in_speech else 0
+        if self._in_speech and speech_only_bytes >= self.min_speech_bytes:
             self._emit(bytes(self._speech), self._seg_start_pos / BYTES_PER_SEC)
         elif self._in_speech:
-            logger.debug("Segment too short (%d bytes) — discarded", len(self._speech))
+            logger.debug("Segment too short (%d bytes speech, %d pre-roll) — discarded",
+                         speech_only_bytes, preroll_bytes)
         self._in_speech = False
         self._speech = bytearray()
         self._pending_silence = bytearray()
