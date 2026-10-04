@@ -59,6 +59,35 @@ Veja `LATENCY_PROBLEM.md` para guia completo.
 
 ## Instalação
 
+### Início rápido (recomendado)
+
+```bash
+git clone https://github.com/ukoquique-proves/cidadeTV-canal10.git
+cd cidadeTV-canal10
+./start.sh
+```
+
+O script cria o venv, instala as dependências, copia `.env.example → .env` e inicia o app.
+Abra http://localhost:8000 no browser.
+
+Pré-requisitos: **Python 3.10+** e **ffmpeg** instalados no sistema.
+- Ubuntu/Debian: `sudo apt install ffmpeg`
+- macOS: `brew install ffmpeg`
+
+Para usar o Groq (recomendado — muito mais rápido):
+
+```bash
+GROQ_API_KEY=gsk_... ./start.sh
+```
+
+Chave gratuita em https://console.groq.com/keys. O script a grava no `.env`.
+
+Na segunda execução em diante, basta `./start.sh` — o venv e as dependências já existem.
+
+---
+
+### Manual (passo a passo)
+
 ### Groq — instalação mínima (~50 MB, sem torch)
 
 ```bash
