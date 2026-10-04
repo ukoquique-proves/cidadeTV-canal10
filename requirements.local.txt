@@ -1,0 +1,28 @@
+# ── Local models — only needed when NOT using Groq ────────────────────────────
+# If GROQ_API_KEY is set in .env, skip this file entirely:
+#
+#   pip install -r requirements.groq.txt
+#
+# If you want local fallback models (faster-whisper + NLLB + Silero VAD):
+#
+#   pip install -r requirements.txt          # installs everything
+#   pip install -r requirements.local.txt    # installs only the local-model deps
+
+# ── Core ASR ─────────────────────────────────────────────────────────────────
+faster-whisper==1.1.1
+
+# ── Voice Activity Detection ─────────────────────────────────────────────────
+silero-vad==5.1.2           # Silero VAD with the model bundled (works offline)
+
+# ── Translation ───────────────────────────────────────────────────────────────
+# NLLB-200 and MarianMT come via transformers + sentencepiece.
+# Python 3.13: use these exact versions — older ones lack a compatible
+# tokenizers wheel and try to build from source (fails without a C toolchain).
+transformers==4.57.6
+sentencepiece==0.2.2
+
+# ── PyTorch ───────────────────────────────────────────────────────────────────
+# Required by silero-vad and transformers.  CPU build by default (~800 MB).
+# For GPU replace with the CUDA wheel:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.3.1

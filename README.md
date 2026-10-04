@@ -57,11 +57,13 @@ caption ready: speech started 7.4s ago … (seg 5.1s, ASR 0.3s, translation 0.7s
 **1–2 s não bastam** com este desenho (reconhecimento por frases). Medido com Groq: 10–15 s.
 Veja `LATENCY_PROBLEM.md` para guia completo.
 
-## Instalação rápida (com Groq)
+## Instalação
+
+### Groq — instalação mínima (~50 MB, sem torch)
 
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.groq.txt
 ffmpeg -version          # ffmpeg precisa estar instalado no sistema
 cp .env.example .env
 # Edite .env: preencha GROQ_API_KEY com a chave de https://console.groq.com/keys
@@ -73,15 +75,30 @@ Ordem recomendada na primeira vez:
 2. Ative a tradução e avalie o ES.
 3. Abra o player e ajuste *Atraso do vídeo* / *Ajuste das legendas*.
 
-## Instalação sem Groq (modelos locais)
+### Modelos locais (sem Groq, ~800 MB+ com torch)
 
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt   # inclui torch (~800 MB) e faster-whisper
+pip install -r requirements.txt   # core + torch + faster-whisper + NLLB + Silero
 cp .env.example .env
 # Deixe GROQ_API_KEY em branco — o sistema usa faster-whisper + NLLB automaticamente
 python main.py
 ```
+
+### Groq + Silero VAD (recomendado se torch já estiver instalado)
+
+```bash
+pip install -r requirements.groq.txt
+pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentação VAD
+```
+
+### Arquivos de requirements
+
+| Arquivo | Instala | Tamanho aprox. |
+|---|---|---|
+| `requirements.groq.txt` | Core + Groq (sem torch) | ~50 MB |
+| `requirements.local.txt` | torch + faster-whisper + NLLB + Silero | ~800 MB |
+| `requirements.txt` | Tudo (inclui `requirements.local.txt`) | ~850 MB |
 
 ## Configuração (`.env` — veja `.env.example`)
 
@@ -196,6 +213,9 @@ python tests/e2e_local_hls.py             # ffmpeg real → stream HLS local →
 python tests/smoke_main.py                # main.py + servidor + WebSocket + Ctrl+C (modelos simulados)
 npm i jsdom && node tests/page.test.js    # lógica da página (HLS.js/WebSocket simulados)
 ```
+
+Os testes unitários Python não precisam de torch — funcionam com a instalação mínima
+(`requirements.groq.txt`).
 
 **Não coberto pelos testes** (precisa do seu ambiente): Whisper e NLLB reais, o stream real da
 TV Cidade 10, e HLS.js num navegador de verdade.
