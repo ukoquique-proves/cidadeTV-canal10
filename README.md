@@ -107,14 +107,12 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `GROQ_API_KEY` | — | Chave da API. Quando preenchida, ativa Groq para ASR e tradução. Obtenha em https://console.groq.com/keys |
-| `GROQ_TRANSLATE_MODEL` | `openai/gpt-oss-20b` | Modelo LLM para PT→ES. Veja modelos disponíveis com `groq.models.list()` |
-| `GROQ_REASONING_EFFORT` | `low` | Só modelos `gpt-oss`: `low` \| `medium` \| `high` \| `none`. Menos raciocínio = menos latência |
+| `GROQ_TRANSLATE_MODEL` | `openai/gpt-oss-20b` | Modelo LLM para PT→ES. Suporta `reasoning_effort`. Veja modelos disponíveis com `groq.models.list()` |
+| `GROQ_REASONING_EFFORT` | — | gpt-oss only: `off` (desativa raciocínio, mais rápido) \| `low` \| `medium` \| `high` (padrão Groq: medium). Raciocínio adiciona latência e tokens extras. |
 | `GROQ_TIMEOUT_S` | `8` | Timeout por requisição à Groq (s). Uma chamada travada para todo o pipeline |
 | `GROQ_MAX_RETRIES` | `1` | Retentativas do SDK em 429 / 5xx / erro de rede |
 
-> **Nota sobre o placeholder:** se `GROQ_API_KEY` ainda tiver o valor de exemplo
-> `gsk_xxx…` do `.env.example`, o sistema detecta e ignora, usando os modelos locais.
-> Blank (`GROQ_API_KEY=`) também conta como "não configurado".
+> **Nota:** `gpt-oss-20b` retorna raciocínio em um campo separado `.reasoning`; `max_completion_tokens` conta apenas tokens de saída, não tokens de raciocínio. Com raciocínio habilitado, planeje ~200–300 tokens extras. Deixe `GROQ_REASONING_EFFORT=off` para desabilitar e acelerar.
 
 ### Stream
 

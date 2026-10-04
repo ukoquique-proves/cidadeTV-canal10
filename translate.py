@@ -74,24 +74,43 @@ _GROQ_TRANSLATE_MODEL_DEFAULT = "openai/gpt-oss-20b"
 
 
 def _reasoning_kwargs(model: str) -> dict:
-    """Ask reasoning models (gpt-oss) to think as little as possible.
+    """Control reasoning on models that support it (GPT-OSS 20B/120B only).
 
     Translation needs no chain of thought, and thinking time is pure latency on a
-    live stream.  GROQ_REASONING_EFFORT = low (default) | medium | high | none.
-    Sent via extra_body so it also works with the pinned groq==0.13.1, whose
-    typed signature predates the parameter; other models would reject it, so it
-    is only added for gpt-oss.
+    live stream. Only GPT-OSS 20B and 120B support reasoning_effort; other models
+    will reject the parameter. Setting reasoning_effort=low reduces reasoning tokens
+    spent, but STILL increases total tokens. The API response includes reasoning in
+    a separate .reasoning field, and max_completion_tokens does NOT count reasoning
+    tokens — only output tokens count toward the limit.
+
+    Groq default for gpt-oss is medium reasoning. We override to low if explicitly
+    set, but note that even "low" adds latency and token overhead.
+
+    Set GROQ_REASONING_EFFORT=off in .env to disable reasoning entirely (fastest,
+    but uses include_reasoning=False).
     """
-    effort = (os.environ.get("GROQ_REASONING_EFFORT") or "low").strip().lower()
-    if effort in ("none", "off") or not model.startswith("openai/gpt-oss"):
-        return {}
-    return {"extra_body": {"reasoning_effort": effort}}
+    if not model.startswith("openai/gpt-oss"):
+        return {}  # parameter would be rejected; ignore it
+    
+    effort = (os.environ.get("GROQ_REASONING_EFFORT") or "").strip().lower()
+    if effort == "off":
+        return {"include_reasoning": False}  # disable reasoning output
+    if effort in ("low", "medium", "high"):
+        return {"reasoning_effort": effort}
+    # Default: let Groq use its default (medium for gpt-oss)
+    return {}
 
 
 def _translate_groq_sync(text: str) -> str:
     """
     Translate PT→ES via Groq LLM (synchronous, runs in a thread executor).
     Uses the same GROQ_API_KEY as the ASR backend — no extra credentials.
+
+    Note on token limits: max_completion_tokens only counts OUTPUT tokens, not
+    REASONING tokens. gpt-oss-20b includes reasoning in a separate field. With
+    reasoning_effort=medium (default), plan for ~200-300 reasoning tokens + your
+    actual translation. Set max_completion_tokens high enough (we use 2048) to
+    ensure the translation isn't truncated.
     """
     from groq_client import get_client
 
@@ -112,7 +131,7 @@ def _translate_groq_sync(text: str) -> str:
             {"role": "user", "content": text},
         ],
         temperature=0.2,
-        max_tokens=512,
+        max_completion_tokens=2048,  # high enough for reasoning + translation
         **_reasoning_kwargs(model),
     )
     return (completion.choices[0].message.content or "").strip()
