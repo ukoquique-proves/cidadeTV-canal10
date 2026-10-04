@@ -5,6 +5,36 @@ Most recent entry first.
 
 ---
 
+## 2026-10-04 — "Traducción - Minuto" button + pause-to-show ES
+
+### Problem
+Spanish captions are useful on demand — when the user misses a phrase or wants
+to catch up — but not necessarily wanted all the time. The existing "Mostrar ES"
+checkbox is all-or-nothing. There was no way to see ES briefly without toggling
+it on permanently.
+
+### Solution (frontend only, no backend changes)
+Three independent ways ES can now become visible, any one of which is sufficient:
+
+1. **"Mostrar ES" checkbox** — existing always-on behaviour, unchanged.
+2. **"Traducción - Minuto" button** — shows ES for the next 60 seconds across all
+   incoming captions, then hides automatically. The button turns green while
+   active; pressing it again resets the 60 s timer.
+3. **Video paused** — ES appears automatically while the player is paused (useful
+   for catching a phrase just heard). Resuming playback hides it again unless the
+   button or checkbox keep it on.
+
+### Implementation
+- Pure frontend change in `static/index.html`.
+- `esVisible()` helper combines the three states; `render()` (which already runs
+  every 100 ms) uses it instead of checking `showEs.checked` directly.
+- `peekActive` flag + `peekTimer` (60 s `setTimeout`) manage the button state.
+- `pausedEs` flag is set/cleared by `video` `pause`/`play` event listeners.
+- No new WebSocket messages, no new API endpoint — ES was already arriving in
+  every caption message; it was just hidden.
+
+---
+
 ## 2026-10-04 — Groq quota saver: gate on viewer presence
 
 ### Problem
