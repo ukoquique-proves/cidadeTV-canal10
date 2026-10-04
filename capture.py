@@ -31,12 +31,21 @@ every read we compute ``offset = wall_now - audio_position_of_last_byte`` and
 keep the **minimum** over a sliding window: the smallest offset is the one
 measured right when the newest audio arrived.  ``clock.live_time(audio_s)``
 then returns ``audio_s + offset``.
+
+stderr draining
+---------------
+ffmpeg's stderr is drained concurrently from the moment the process starts.
+This prevents the stderr pipe from filling up (~64 KB) and blocking ffmpeg,
+which would block our stdout reads and stall the whole pipeline. The last 8 KB
+of stderr is kept for error reporting.
 """
 
 import asyncio
 import logging
 import os
+import random
 import time
+from asyncio.subprocess import DEVNULL, PIPE
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -86,7 +95,113 @@ clock = AudioClock()
 
 
 # ---------------------------------------------------------------------------
-# ffmpeg
+# Process management
+# ---------------------------------------------------------------------------
+
+class StallError(Exception):
+    """ffmpeg is alive but has produced no audio for too long."""
+
+
+class FfmpegProcess:
+    """Owns one ffmpeg child. stderr is drained from the moment it starts, so the
+    child can never block on a full pipe, and stop() can never hang on one."""
+
+    def __init__(self, cmd: list[str], *, grace_s: float = 3.0, tail_bytes: int = 8192):
+        self.cmd, self._grace, self._tail_max = cmd, grace_s, tail_bytes
+        self._proc: asyncio.subprocess.Process | None = None
+        self._drain: asyncio.Task | None = None
+        self._tail = bytearray()
+
+    async def __aenter__(self):
+        self._proc = await asyncio.create_subprocess_exec(*self.cmd, stdin=DEVNULL, stdout=PIPE, stderr=PIPE)
+        self._drain = asyncio.create_task(self._drain_stderr(), name="ffmpeg-stderr")
+        return self
+
+    async def __aexit__(self, *_exc):
+        await self.stop()
+
+    async def _drain_stderr(self) -> None:
+        while chunk := await self._proc.stderr.read(4096):
+            self._tail += chunk
+            if len(self._tail) > self._tail_max:
+                del self._tail[: -self._tail_max]          # keep only the newest bytes
+
+    @property
+    def stderr_tail(self) -> str:
+        lines = [l for l in self._tail.decode(errors="replace").splitlines() if l.strip()]
+        return " | ".join(l[:200] for l in lines[-3:])
+
+    @property
+    def pid(self): return self._proc.pid
+
+    async def read(self, n: int, timeout: float) -> bytes:
+        try:
+            return await asyncio.wait_for(self._proc.stdout.read(n), timeout)
+        except asyncio.TimeoutError:
+            raise StallError(f"no audio for {timeout:.0f}s") from None
+
+    async def exit_code(self, timeout: float = 5.0) -> int | None:
+        try:
+            return await asyncio.wait_for(self._proc.wait(), timeout)
+        except asyncio.TimeoutError:
+            return None
+
+    async def stop(self) -> None:
+        p = self._proc
+        # asyncio only reports an exit once BOTH pipes hit EOF, so while stopping we must
+        # keep consuming stdout too (the reader may have been cancelled mid-stream).
+        sink = asyncio.create_task(self._discard(p.stdout)) if p is not None else None
+        if p is not None and p.returncode is None:
+            for sig in ("terminate", "kill"):
+                try:
+                    getattr(p, sig)()
+                except ProcessLookupError:
+                    break
+                try:
+                    await asyncio.wait_for(p.wait(), self._grace)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+            else:
+                logger.error("ffmpeg pid=%s would not die; abandoning it", p.pid)
+        for t in (self._drain, sink):
+            if t is not None:
+                try:
+                    await asyncio.wait_for(t, 1.0)             # both end by themselves at EOF
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+
+    @staticmethod
+    async def _discard(stream) -> None:
+        while await stream.read(65536):
+            pass
+
+
+class Chunker:
+    """Pure byte-slicing. No I/O, so it is trivially unit-testable."""
+
+    def __init__(self, chunk_bytes: int):
+        self.chunk_bytes, self.emitted, self._buf = chunk_bytes, 0, bytearray()
+
+    @property
+    def received_end(self) -> int:
+        return self.emitted + len(self._buf)
+
+    def discard_partial(self) -> None:
+        self._buf.clear()                                   # timeline position is unchanged
+
+    def feed(self, raw: bytes) -> list[tuple[int, bytes]]:
+        self._buf += raw
+        out = []
+        while len(self._buf) >= self.chunk_bytes:
+            out.append((self.emitted, bytes(self._buf[: self.chunk_bytes])))
+            del self._buf[: self.chunk_bytes]
+            self.emitted += self.chunk_bytes
+        return out
+
+
+# ---------------------------------------------------------------------------
+# ffmpeg setup
 # ---------------------------------------------------------------------------
 
 def _bytes_per_chunk(chunk_ms: int) -> int:
@@ -122,20 +237,6 @@ def _build_ffmpeg_cmd(stream_url: str) -> list[str]:
     ]
 
 
-async def _terminate(proc: asyncio.subprocess.Process | None) -> None:
-    """Stop an ffmpeg process and reap it (no zombies)."""
-    if proc is None or proc.returncode is not None:
-        return
-    try:
-        proc.terminate()
-        await asyncio.wait_for(proc.wait(), timeout=3)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-    except ProcessLookupError:
-        pass
-
-
 def _put(queue: asyncio.Queue, item: tuple, stats: dict) -> None:
     """Put without blocking; on overflow drop the OLDEST item (and say so)."""
     try:
@@ -164,79 +265,51 @@ def _put(queue: asyncio.Queue, item: tuple, stats: dict) -> None:
 async def _reader_loop(queue: asyncio.Queue, stream_url: str, chunk_ms: int) -> None:
     chunk_bytes = _bytes_per_chunk(chunk_ms)
     cmd = _build_ffmpeg_cmd(stream_url)
-    emitted = 0  # bytes handed to the queue; monotonic across restarts
+    chunker = Chunker(chunk_bytes)
     stats = {"dropped": 0, "last_warn": 0.0}
     retry_delay = 2.0  # starts at 2 s, backs off up to 60 s
+    stall_s = 30.0  # no audio for 30 s = timeout
 
     logger.info("Starting ffmpeg capture from %s", stream_url)
     logger.debug("Command: %s", " ".join(cmd))
 
     while True:
-        proc = None
+        ff, t0, got_audio, why = FfmpegProcess(cmd), time.monotonic(), False, "eof"
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            logger.info("ffmpeg started (pid=%d)", proc.pid)
-            clock.reset()  # offset from the previous run is no longer valid
-            _put(queue, (emitted, None), stats)  # discontinuity marker
-            buf = bytearray()
-            got_audio = False
+            async with ff:
+                logger.info("ffmpeg started (pid=%d)", ff.pid)
+                clock.reset()
+                chunker.discard_partial()
+                _put(queue, (chunker.emitted, None), stats)  # discontinuity marker
 
-            while True:
-                raw = await proc.stdout.read(chunk_bytes * 8)
-                if not raw:
-                    # Read stderr to surface the real ffmpeg error
-                    try:
-                        stderr_out = await asyncio.wait_for(
-                            proc.stderr.read(2048), timeout=1.0
-                        )
-                        err_msg = stderr_out.decode(errors="replace").strip()
-                    except (asyncio.TimeoutError, Exception):
-                        err_msg = ""
-                    if err_msg:
-                        logger.warning("ffmpeg error: %s", err_msg.splitlines()[-1])
-                    if got_audio:
-                        # Stream dropped mid-session — short retry
-                        retry_delay = 2.0
-                        logger.warning("ffmpeg stdout closed, restarting in %.0f s…", retry_delay)
-                    else:
-                        # Never got audio — stream may be down, back off
-                        retry_delay = min(retry_delay * 2, 60.0)
-                        logger.warning(
-                            "ffmpeg exited without producing audio "
-                            "(stream down?), retrying in %.0f s…",
-                            retry_delay,
-                        )
-                    break
+                while raw := await ff.read(chunk_bytes * 8, stall_s):
+                    got_audio = True
+                    for emitted, chunk in chunker.feed(raw):
+                        _put(queue, (emitted, chunk), stats)
+                    clock.observe(chunker.received_end / BYTES_PER_SEC)
+                    await asyncio.sleep(0)
 
-                got_audio = True
-                retry_delay = 2.0  # reset backoff on successful audio
-                buf.extend(raw)
-                # Position of the last byte we have received so far
-                clock.observe((emitted + len(buf)) / BYTES_PER_SEC)
+                rc = await ff.exit_code()
+                why = f"exited rc={rc}"
 
-                while len(buf) >= chunk_bytes:
-                    chunk = bytes(buf[:chunk_bytes])
-                    del buf[:chunk_bytes]
-                    _put(queue, (emitted, chunk), stats)
-                    emitted += chunk_bytes
-
-                # Let the consumers run even if ffmpeg delivered a big burst
-                await asyncio.sleep(0)
-
+        except StallError as e:
+            why = f"stalled ({e})"
         except asyncio.CancelledError:
             logger.info("Capture loop cancelled — shutting down ffmpeg")
-            await _terminate(proc)
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Unexpected error in capture loop: %s", exc, exc_info=True)
-        finally:
-            await _terminate(proc)
+            raise                                            # __aexit__ already reaped the child
+        except Exception as exc:                             # noqa: BLE001
+            why = f"error: {exc!r}"
 
-        await asyncio.sleep(retry_delay)
+        up = time.monotonic() - t0
+        # Backoff only resets after a *healthy* run, so a stream that gives 1 s of audio
+        # and dies is not retried every 2 s forever.
+        healthy_s = 20.0
+        retry_delay = 2.0 if (got_audio and up >= healthy_s) else min(retry_delay * 2, 60.0)
+
+        logger.warning("ffmpeg %s after %.0fs; stderr: %s; restart in %.0fs",
+                       why, up, ff.stderr_tail or "-", retry_delay)
+
+        await asyncio.sleep(retry_delay * random.uniform(0.8, 1.2))
 
 
 # ---------------------------------------------------------------------------
