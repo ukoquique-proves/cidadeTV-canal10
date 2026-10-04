@@ -134,6 +134,11 @@ python main.py
 | `VAD_PREROLL_MS` | `300` | Áudio mantido antes do onset detectado |
 | `VAD_THRESHOLD` | `0.5` | Limiar do Silero VAD (0–1) |
 
+> **Atenção:** O Silero VAD requer `torch`. Sem ele, o sistema usa `EnergyDetector` (detecção
+> por RMS), que segmenta mal em áudio com música/ruído. Se o log avisa que >50% dos segmentos
+> são "force-cut" em vez de fechados por silêncio detectado, instale Silero VAD:
+> `pip install silero-vad` (~800 MB torch).
+
 ### Tradução
 
 | Variável | Padrão | Descrição |
@@ -202,5 +207,7 @@ TV Cidade 10, e HLS.js num navegador de verdade.
 * Se o pipeline for mais lento que o tempo real, o log avisa (`falling behind`) e legendas antigas
   são descartadas. Use um modelo menor, Groq, ou GPU.
 * O Silero VAD requer `torch`. Sem ele, o sistema usa `EnergyDetector` (detecção por RMS),
-  que segmenta por energia sonora e não por pausa de fala — funciona, mas produz mais cortes
-  no meio de frases. Instale `silero-vad` no venv para restaurar o VAD completo.
+  que segmenta por energia sonora e não por pausa de fala. Em áudio com música/ruído, isto
+  causa cortes no meio de frases (~5 s). O log alertará se **>50% dos segmentos forem "force-cut"**
+  (corte forçado) em vez de fechados naturalmente por silêncio. Quando isso acontecer, instale
+  Silero VAD: `pip install silero-vad` (~800 MB torch).

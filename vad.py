@@ -141,6 +141,11 @@ class VadSegmenter:
         self._win_pos = 0             # byte position of _win_buf[0]
         self._reset_segment_state()
 
+        # --- health tracking ---
+        self._forced_cuts = 0         # segments ended due to max_segment_bytes
+        self._natural_ends = 0        # segments ended due to silence detection
+        self._health_warned = False   # warn once per session
+
     # ------------------------------------------------------------------ API
 
     def start(self) -> asyncio.Task:
@@ -239,10 +244,13 @@ class VadSegmenter:
                 self._pending_silence.clear()
             self._speech.extend(window)
             if len(self._speech) >= self.max_segment_bytes:
+                self._forced_cuts += 1
+                self._check_vad_health()
                 self._flush()          # long speech without a pause: cut here
         elif self._in_speech:
             self._pending_silence.extend(window)
             if len(self._pending_silence) >= self.silence_bytes:
+                self._natural_ends += 1
                 self._flush()          # real pause: trailing silence is dropped
         else:
             self._preroll.append((wpos, window))
@@ -269,3 +277,22 @@ class VadSegmenter:
             except asyncio.QueueEmpty:
                 pass
             self.out_queue.put_nowait(item)
+
+    def _check_vad_health(self) -> None:
+        """Warn if VAD is using EnergyDetector and producing forced cuts on music/noise."""
+        if self._health_warned or self._forced_cuts < 3:
+            return  # Need a few samples before warning
+        
+        # If more than 50% of segments are force-cut (not silence-ended),
+        # we're likely in music/noise with a poor detector
+        total = self._forced_cuts + self._natural_ends
+        forced_pct = 100 * self._forced_cuts / total if total > 0 else 0
+        
+        if forced_pct > 50 and not isinstance(self._detector, SileroDetector):
+            logger.warning(
+                "VAD: %d of %d recent segments were force-cut (not silence-ended). "
+                "This suggests the audio has music/noise and EnergyDetector is struggling. "
+                "Install torch + silero-vad for better segmentation: pip install silero-vad",
+                self._forced_cuts, total
+            )
+            self._health_warned = True
