@@ -5,6 +5,34 @@ Most recent entry first.
 
 ---
 
+## 2026-10-04 — Groq quota saver: gate on viewer presence
+
+### Problem
+Groq free tier caps are ~14,400 ASR requests/day and ~500k LLM tokens/day. A 24/7 stream
+will hit those limits even with only a few viewers because ASR and translation run
+unconditionally — Groq calls happen whether anyone is listening or not.
+
+### Solution
+When no WebSocket client is connected, the Transcriber discards every VAD segment
+without calling the ASR backend at all. The same logic applies to the Translator.
+VAD and capture keep running, so the pipeline is warm when the first viewer arrives.
+
+### Implementation
+- `Transcriber.__init__` now accepts an optional `has_viewers` callable.
+- In `Transcriber._run()`, after `await self.in_queue.get()`, the gate checks
+  `has_viewers()` and `continue`s if `False`. Logs once when entering/exiting idle.
+- `main.py` wires `has_viewers=lambda: _manager.count > 0`.
+- Two new unit tests verify both the skip and resume paths.
+
+### Impact
+- A 24/7 stream with zero viewers burns **zero Groq quota** — no ASR calls, no
+  translation calls, no 429 rate limits, no retry backoff.
+- With one viewer, quota usage becomes linear with viewer count.
+- When the first viewer connects, VAD has been running the whole time, so the
+  first caption arrives with normal latency — no warm-up delay.
+
+---
+
 ## 2026-10-04 — reasoning_effort fix + VAD gap detection
 
 ### Fixed reasoning_effort parameter handling for gpt-oss-20b
