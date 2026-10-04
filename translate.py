@@ -117,6 +117,10 @@ def _translate_groq_sync(text: str) -> str:
     model = os.environ.get("GROQ_TRANSLATE_MODEL") or _GROQ_TRANSLATE_MODEL_DEFAULT
     client = get_client()
 
+    # reasoning_effort / include_reasoning are sent via extra_body: the pinned
+    # groq==0.13.1 SDK predates them and rejects them as keyword arguments
+    # (TypeError), while extra_body is accepted by every SDK version.
+    reasoning = _reasoning_kwargs(model)
     completion = client.chat.completions.create(
         model=model,
         messages=[
@@ -132,7 +136,7 @@ def _translate_groq_sync(text: str) -> str:
         ],
         temperature=0.2,
         max_tokens=2048,  # Groq SDK 0.13.1 uses max_tokens (not max_completion_tokens)
-        **_reasoning_kwargs(model),
+        **({"extra_body": reasoning} if reasoning else {}),
     )
     return (completion.choices[0].message.content or "").strip()
 

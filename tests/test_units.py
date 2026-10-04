@@ -461,7 +461,7 @@ def test_reasoning_effort_only_for_gpt_oss(monkeypatch):
     assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {}
     assert translate._reasoning_kwargs("llama-3.1-8b-instant") == {}     # would be a 400
     monkeypatch.setenv("GROQ_REASONING_EFFORT", "medium")
-    # reasoning_effort passed directly when set
+    # reasoning_effort passed via extra_body (groq==0.13.1 rejects it as a kwarg)
     assert translate._reasoning_kwargs("openai/gpt-oss-120b") == {"reasoning_effort": "medium"}
     monkeypatch.setenv("GROQ_REASONING_EFFORT", "off")
     # off disables reasoning entirely via include_reasoning=False
@@ -488,8 +488,9 @@ def test_groq_translation_sends_reasoning_effort(monkeypatch):
     monkeypatch.setenv("GROQ_REASONING_EFFORT", "low")  # explicitly set to test it's passed
     assert translate._translate_groq_sync("olá") == "hola"
     assert seen["model"] == "openai/gpt-oss-20b"
-    # reasoning_effort is now passed directly, not via extra_body
-    assert seen["reasoning_effort"] == "low"
+    # sent via extra_body: groq==0.13.1 rejects it as a keyword argument
+    assert seen["extra_body"] == {"reasoning_effort": "low"}
+    assert "reasoning_effort" not in seen
 
 
 def test_vad_detects_gap_wherever_it_falls():
@@ -599,3 +600,39 @@ def test_transcriber_resumes_asr_when_viewer_connects():
     out_items = asyncio.run(_run())
     assert len(asr_calls) == 1, "ASR should be called exactly once after viewer connects"
     assert out_items == 1, "One transcript should reach the output queue"
+
+
+def test_groq_call_kwargs_are_accepted_by_installed_sdk(monkeypatch):
+    """The fake clients above accept ANY kwarg, so they cannot notice an SDK that
+    rejects one (groq==0.13.1 raised TypeError on reasoning_effort).  Check the
+    kwargs against the real SDK's signature instead."""
+    import inspect
+    import types
+    import pytest
+    try:
+        from groq.resources.chat.completions import Completions
+    except ImportError:
+        pytest.skip("groq not installed")
+    import translate
+
+    params = inspect.signature(Completions.create).parameters
+    seen = {}
+
+    def create(**kw):
+        seen.update(kw)
+        msg = types.SimpleNamespace(content="hola")
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
+
+    class FakeGroq:
+        def __init__(self, api_key, **kw):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
+
+    monkeypatch.setitem(sys.modules, "groq", types.SimpleNamespace(Groq=FakeGroq))
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.delenv("GROQ_TRANSLATE_MODEL", raising=False)
+    for effort in ("off", "low", "medium", "high"):
+        seen.clear()
+        monkeypatch.setenv("GROQ_REASONING_EFFORT", effort)
+        translate._translate_groq_sync("olá")
+        unknown = set(seen) - set(params)
+        assert not unknown, f"GROQ_REASONING_EFFORT={effort}: SDK would reject {unknown}"
