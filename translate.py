@@ -80,7 +80,7 @@ def _reasoning_kwargs(model: str) -> dict:
     live stream. Only GPT-OSS 20B and 120B support reasoning_effort; other models
     will reject the parameter. Setting reasoning_effort=low reduces reasoning tokens
     spent, but STILL increases total tokens. The API response includes reasoning in
-    a separate .reasoning field, and max_completion_tokens does NOT count reasoning
+    a separate .reasoning field, and max_tokens does NOT count reasoning
     tokens — only output tokens count toward the limit.
 
     Groq default for gpt-oss is medium reasoning. We override to low if explicitly

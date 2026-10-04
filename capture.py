@@ -56,6 +56,9 @@ BYTES_PER_SEC = SAMPLE_RATE * 2  # int16 mono
 # ~2 minutes of audio at 100 ms per chunk
 DEFAULT_QUEUE_CHUNKS = 1200
 
+# Single source of truth for the default stream (main.py and server.py import it).
+DEFAULT_STREAM_URL = "https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8"
+
 
 # ---------------------------------------------------------------------------
 # Audio clock
@@ -332,10 +335,7 @@ def start_capture(
     chunk_ms: int = 100,
 ) -> asyncio.Task:
     """Start the ffmpeg capture loop as a background asyncio Task."""
-    url = stream_url or os.environ.get(
-        "STREAM_URL",
-        "https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8",
-    )
+    url = stream_url or os.environ.get("STREAM_URL", DEFAULT_STREAM_URL)
     return asyncio.create_task(_reader_loop(queue, url, chunk_ms), name="capture")
 
 

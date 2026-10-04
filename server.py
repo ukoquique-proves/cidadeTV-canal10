@@ -43,14 +43,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+from capture import DEFAULT_STREAM_URL  # noqa: E402  (single definition; re-exported here)
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-DEFAULT_STREAM_URL = "https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8"
 PLAYLIST_TYPE = "application/vnd.apple.mpegurl"
 
 _SECRET = secrets.token_bytes(32)
@@ -258,7 +259,7 @@ def create_app() -> FastAPI:
                 except asyncio.TimeoutError:
                     # bounded: a stuck client must not park this handler forever
                     await asyncio.wait_for(ws.send_text('{"ping":true}'), timeout=_SEND_TIMEOUT)
-        except (WebSocketDisconnect, Exception):  # noqa: BLE001
+        except Exception:  # noqa: BLE001  (also covers WebSocketDisconnect)
             pass
         finally:
             _manager.disconnect(ws)

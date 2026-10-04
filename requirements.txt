@@ -1,16 +1,6 @@
-# ── Core — needed for every setup (Groq + local) ─────────────────────────────
+# Everything: Groq/core (requirements.groq.txt) + local models (requirements.local.txt).
 # Install with: pip install -r requirements.txt
+# Pins live in ONE place per file — edit the included files, not this one.
 
-groq==0.13.1                # cloud ASR + LLM translation (needs GROQ_API_KEY in .env)
-
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-websockets==13.0.1          # FastAPI WebSocket support
-httpx==0.27.2               # async HTTP client for the HLS proxy
-
-python-dotenv==1.0.1        # loads .env into os.environ
-numpy>=1.24                 # audio array handling
-
-# Local models — only needed when NOT using Groq (see requirements.local.txt)
-# If GROQ_API_KEY is set in .env you do NOT need to install these.
+-r requirements.groq.txt
 -r requirements.local.txt

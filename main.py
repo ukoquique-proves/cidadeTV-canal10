@@ -58,7 +58,7 @@ logger = logging.getLogger("main")
 for _note in _ENV_NOTES:
     logger.warning(_note)
 
-from capture import DEFAULT_QUEUE_CHUNKS, clock, start_capture, stop_capture  # noqa: E402
+from capture import DEFAULT_QUEUE_CHUNKS, DEFAULT_STREAM_URL, clock, start_capture, stop_capture  # noqa: E402
 from captions import expand, to_message  # noqa: E402
 from server import create_app, push_caption, _manager  # noqa: E402
 from transcribe import Transcriber, _resolve_config as _whisper_config  # noqa: E402
@@ -125,9 +125,7 @@ async def _push_captions(queue: asyncio.Queue) -> None:
 # ── Pipeline ────────────────────────────────────────────────────────────────
 
 def build_pipeline(args: argparse.Namespace) -> list[asyncio.Task]:
-    stream = os.environ.get(
-        "STREAM_URL", "https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8"
-    )
+    stream = os.environ.get("STREAM_URL", DEFAULT_STREAM_URL)
     logger.info("Stream URL: %s", stream)
 
     groq_key = os.environ.get("GROQ_API_KEY")

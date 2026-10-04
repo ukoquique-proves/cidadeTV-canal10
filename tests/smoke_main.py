@@ -3,7 +3,7 @@ Smoke test of main.py: real uvicorn server + real WebSocket client + SIGINT shut
 with only the two ML models stubbed.  Needs ffmpeg and `pip install websockets`.
     python tests/smoke_main.py
 """
-import asyncio, functools, http.server, json, os, shutil, signal, subprocess, sys, tempfile, textwrap, threading, time
+import asyncio, functools, http.server, json, shutil, signal, subprocess, sys, tempfile, textwrap, threading, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

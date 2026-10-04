@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import captions  # noqa: E402
 from capture import BYTES_PER_SEC, AudioClock  # noqa: E402
-from vad import EnergyDetector, VadSegmenter, WINDOW_BYTES  # noqa: E402
+from vad import EnergyDetector, VadSegmenter  # noqa: E402
 
 
 # ── AudioClock ───────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ def _silence(seconds):
 async def _run_vad(pcm: bytes, chunk_ms=100, drop_chunks=(), markers=()):
     inq, outq = asyncio.Queue(), asyncio.Queue()
     vad = VadSegmenter(inq, outq, detector=EnergyDetector())
-    task = vad.start()
+    vad.start()
     n = 3200 * chunk_ms // 100
     for i, off in enumerate(range(0, len(pcm), n)):
         if i in markers:

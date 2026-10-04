@@ -1,19 +1,12 @@
-# ── Groq-only install — no torch, no local models (~50 MB total) ─────────────
-#
-# Use this when GROQ_API_KEY is set in .env and you don't need local fallbacks:
-#
-#   pip install -r requirements.groq.txt
-#
-# The app will use Groq for both ASR and translation and EnergyDetector for
-# VAD (no torch needed).  If you later want Silero VAD:
-#   pip install silero-vad   # pulls in torch (~800 MB)
+# Core + Groq cloud ASR/translation. No torch (~50 MB).
+# Install with: pip install -r requirements.groq.txt
 
-groq==0.13.1
+groq==0.13.1                # cloud ASR + LLM translation (needs GROQ_API_KEY in .env)
 
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-websockets==13.0.1
-httpx==0.27.2
+websockets==13.0.1          # FastAPI WebSocket support
+httpx==0.27.2               # async HTTP client for the HLS proxy
 
-python-dotenv==1.0.1
-numpy>=1.24
+python-dotenv==1.0.1        # loads .env into os.environ
+numpy>=1.24                 # audio array handling
