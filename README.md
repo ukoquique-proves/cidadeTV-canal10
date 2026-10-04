@@ -98,7 +98,7 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 |---|---|---|
 | `requirements.groq.txt` | Core + Groq (sem torch) | ~50 MB |
 | `requirements.local.txt` | torch + faster-whisper + NLLB + Silero | ~800 MB |
-| `requirements.txt` | Tudo (inclui `requirements.local.txt`) | ~850 MB |
+| `requirements.txt` | Tudo (inclui os dois arquivos acima) | ~850 MB |
 
 ## Configuração (`.env` — veja `.env.example`)
 
@@ -210,6 +210,41 @@ Quando o stream cai, `capture.py` usa **backoff exponencial**:
   (glitch transitório, não uma queda prolongada).
 - O stderr do ffmpeg é capturado e logado: `capture — ffmpeg error: Connection refused`.
 
+Quando o upstream retorna **404** (canal fora do ar ou URL mudou), o proxy devolve
+`503 Service Unavailable` (em vez de 404) para que o HLS.js continue tentando — um 404
+faria o player desistir permanentemente. A página exibe um banner vermelho:
+`⚠ Stream offline (404) — o canal está fora do ar. Tentando reconectar…`
+O banner some automaticamente quando o stream volta.
+
+### Verificar quando o stream volta
+
+```bash
+./check_stream.sh    # imprime HTTP 200 / 404 a cada 60 s até Ctrl+C
+```
+
+Se o player do site oficial voltou a funcionar mas o app ainda recebe 404, a URL
+do stream provavelmente mudou. Abra o DevTools do browser → aba Network → filtro
+`m3u8` → recarregue a página e clique em play → copie a URL da requisição
+`playlist.m3u8`. Atualize `STREAM_URL` no `.env` e reinicie.
+
+## Testar sem o canal ao vivo
+
+A pasta `test_hls/` contém um stream HLS curto (60 s de áudio sintético) para
+verificar o pipeline sem depender do canal:
+
+```bash
+# Terminal 1 — serve o stream local
+cd test_hls && python3 -m http.server 9100
+
+# Terminal 2 — inicia o app apontando para o stream local
+source venv/bin/activate
+STREAM_URL=http://127.0.0.1:9100/stream.m3u8 python main.py
+```
+
+O ffmpeg lê o arquivo, o VAD segmenta, o ASR transcreve (via Groq ou local) e as
+legendas chegam no browser. O stream termina com `#EXT-X-ENDLIST` e o ffmpeg sai
+limpo (`rc=0`); o app reconecta em seguida.
+
 ## Segurança do proxy
 
 O proxy HLS só serve o `STREAM_URL` configurado; toda URL reescrita leva uma assinatura HMAC com
@@ -228,8 +263,11 @@ python -m pytest tests -q                 # unitários: relógio, VAD, legendas,
 node tests/captions.test.js               # agendador de legendas
 python tests/e2e_local_hls.py             # ffmpeg real → stream HLS local → captura/VAD/legendas (~30 s)
 python tests/smoke_main.py                # main.py + servidor + WebSocket + Ctrl+C (modelos simulados)
-npm i jsdom && node tests/page.test.js    # lógica da página (HLS.js/WebSocket SIMULADOS em jsdom)
+node tests/page.test.js                   # lógica da página (HLS.js/WebSocket SIMULADOS em jsdom)
 ```
+
+`jsdom` já está instalado em `node_modules/` (instalado com `npm install --save-dev jsdom@24`).
+Se a pasta não existir, execute `npm install` primeiro.
 
 Os testes unitários Python não precisam de torch — funcionam com a instalação mínima
 (`requirements.groq.txt`).

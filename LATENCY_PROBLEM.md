@@ -66,6 +66,7 @@ Each patch reduced Row 3 or improved reliability. None changed Rows 1 or 2.
 | `groq_client.py` shared pool | Removes per-request TLS handshake overhead | Row 3 |
 | `reasoning_effort=low` | Removes chain-of-thought latency on `gpt-oss` | Row 3 |
 | `VAD_MAX_SEGMENT_MS` 8000→5000 | Worst-case phrase wait 8 s → 5 s | Row 2 |
+| Viewer gate (no viewers → no ASR) | Saves Groq quota; no latency impact | None |
 | Exponential backoff in `capture.py` | Stream-down recovery; no latency impact | None |
 | WebSocket slow-client timeout | Prevents one browser stalling others | None |
 
