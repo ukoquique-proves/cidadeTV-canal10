@@ -395,7 +395,7 @@ never been run against the real stream.
 ### What was tested in the package
 - 12 unit tests pass.
 - `CaptionScheduler` logic verified in Node.js.
-- Page logic verified in jsdom.
+- Page logic verified in jsdom (HLS.js and WebSocket mocked, not real browser).
 - End-to-end with real ffmpeg + local live HLS: captions placed within 20 ms of
   true timing in steady state; first caption may be ~0.25 s off while
   `AudioClock` settles.
@@ -404,7 +404,9 @@ never been run against the real stream.
 ### What was NOT tested in the package
 - Real Whisper and NLLB models.
 - Real TV Cidade 10 stream.
-- HLS.js in a real browser.
+- HLS.js in a real browser (Firefox, Chrome, Safari, etc.) — jsdom page tests
+  use stubbed HLS.js and WebSocket. Real browser behavior may differ in timing,
+  buffering, or event handling.
 
 ---
 

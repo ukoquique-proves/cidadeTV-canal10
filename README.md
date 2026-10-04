@@ -209,14 +209,23 @@ python -m pytest tests -q                 # unitários: relógio, VAD, legendas,
 node tests/captions.test.js               # agendador de legendas
 python tests/e2e_local_hls.py             # ffmpeg real → stream HLS local → captura/VAD/legendas (~30 s)
 python tests/smoke_main.py                # main.py + servidor + WebSocket + Ctrl+C (modelos simulados)
-npm i jsdom && node tests/page.test.js    # lógica da página (HLS.js/WebSocket simulados)
+npm i jsdom && node tests/page.test.js    # lógica da página (HLS.js/WebSocket SIMULADOS em jsdom)
 ```
 
 Os testes unitários Python não precisam de torch — funcionam com a instalação mínima
 (`requirements.groq.txt`).
 
-**Não coberto pelos testes** (precisa do seu ambiente): Whisper e NLLB reais, o stream real da
-TV Cidade 10, e HLS.js num navegador de verdade.
+**Teste com stubs (jsdom, não browser real)**
+- `tests/page.test.js` testa a lógica `static/captions.js` (agendador de legendas,
+  sincronização de idade, detecção de atraso) com HLS.js e WebSocket mockados via jsdom.
+  O comportamento com um player HLS real (HLS.js em Firefox/Chrome) é **não testado**
+  — possíveis diferenças em timing, comportamento de buffering, ou tratamento de eventos.
+
+**Não coberto pelos testes** (precisa do seu ambiente):
+- Whisper e NLLB reais (modelos são simulados)
+- Stream real da TV Cidade 10
+- HLS.js em um navegador de verdade (Firefox, Chrome, Safari, etc.)
+- Comportamento end-to-end com várias condições de rede e buffering
 
 ## Riscos conhecidos
 
