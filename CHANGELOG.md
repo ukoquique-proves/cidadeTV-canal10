@@ -5,6 +5,32 @@ Most recent entry first.
 
 ---
 
+## 2026-10-04 — reasoning_effort fix + VAD gap detection
+
+### Fixed reasoning_effort parameter handling for gpt-oss-20b
+- `reasoning_effort` is now passed directly to the Groq API (not via `extra_body`), matching Groq SDK expectations
+- Added support for `GROQ_REASONING_EFFORT=off` to disable reasoning entirely (fastest option for live streams)
+- Increased `max_completion_tokens` from 512 to 2048 — reasoning tokens don't count toward this limit, but the output translation still needs room
+- Updated `.env.example` and README docs to clarify that reasoning adds latency (~200–300 ms) and is optional for live captions
+- Only applies to `gpt-oss` models; other models silently ignore the parameter (no API errors)
+
+### VAD gap detection even when window buffer is empty
+- Fixed a bug where dropped audio chunks at window-buffer boundaries (every ~8th chunk) went undetected
+- Added `_stream_started` flag to distinguish true stream start from buffer-empty state
+- Gap detection now computes expected position even when the buffer is empty, catching all dropped chunks
+- Added two new unit tests: `test_vad_detects_gap_wherever_it_falls()` and `test_vad_marker_then_stream_continues_normally()`
+
+### Test coverage updates
+- Updated `test_reasoning_effort_only_for_gpt_oss()` to match new parameter-passing behavior
+- Updated `test_groq_translation_sends_reasoning_effort()` to test direct parameter (not `extra_body`)
+- All 30 unit tests pass
+
+### Documentation clarification
+- README: Expanded test section to explicitly state that page tests use jsdom stubs, not a real browser
+- CHANGELOG: Clarified what was tested with real dependencies vs. what requires the user's environment
+
+---
+
 ## 2026-10-03 — page + docs refresh
 
 ### Frontend polish
