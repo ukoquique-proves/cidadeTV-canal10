@@ -67,22 +67,38 @@ cd cidadeTV-canal10
 ./start.sh
 ```
 
-O script cria o venv, instala as dependências, copia `.env.example → .env` e inicia o app.
 Abra http://localhost:8000 no browser.
 
-Pré-requisitos: **Python 3.10+** e **ffmpeg** instalados no sistema.
+**Pré-requisitos:** Python 3.10+ e ffmpeg instalados no sistema.
 - Ubuntu/Debian: `sudo apt install ffmpeg`
 - macOS: `brew install ffmpeg`
+- Windows: https://ffmpeg.org/download.html (adicione ao PATH)
 
-Para usar o Groq (recomendado — muito mais rápido):
+**Com Groq (muito mais rápido — recomendado):**
 
 ```bash
 GROQ_API_KEY=gsk_... ./start.sh
 ```
 
-Chave gratuita em https://console.groq.com/keys. O script a grava no `.env`.
+Chave gratuita em https://console.groq.com/keys. O script a grava no `.env` automaticamente.
+Na segunda execução em diante, basta `./start.sh` — venv e dependências já existem.
 
-Na segunda execução em diante, basta `./start.sh` — o venv e as dependências já existem.
+#### O que `start.sh` faz
+
+Você não precisa conhecer venvs, pip ou Python para usar o projeto. O script cuida de tudo:
+
+1. Verifica se `python3` e `ffmpeg` estão instalados (com mensagem de erro clara se não estiverem).
+2. Cria um ambiente virtual `venv/` isolado (apenas na primeira execução).
+3. Instala as dependências Python (~50 MB, sem torch, apenas Groq) — só reinstala quando `requirements.groq.txt` mudar.
+4. Copia `.env.example → .env` se ainda não existir um `.env`.
+5. Grava `GROQ_API_KEY` no `.env` se a variável for passada na linha de comando.
+6. Avisa se nenhuma chave Groq estiver configurada e explica o fallback local.
+7. Inicia `python main.py` — todos os argumentos extras são repassados:
+   ```bash
+   ./start.sh --fast            # modelo tiny, sem tradução, latência mínima
+   ./start.sh --capture-only    # só transcrição no terminal, sem player web
+   ./start.sh --host 0.0.0.0    # expõe o player na rede local
+   ```
 
 ---
 
