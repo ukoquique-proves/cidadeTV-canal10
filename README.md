@@ -165,6 +165,25 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 `ENABLE_TRANSLATION` e `TRANSLATION_BACKEND` valem **com ou sem** `GROQ_API_KEY`.
 O backend `llm` genérico requer também `LLM_API_URL`, `LLM_API_KEY` e `LLM_MODEL`.
 
+> **Cota Groq e streams 24/7:** o Groq ASR tem cap generoso (~14.400 req/dia no tier gratuito);
+> o tier de LLM para `gpt-oss-20b` é mais restrito (~1.000 req/dia). Num stream contínuo com
+> espectadores ativos, a tradução pode bater o limite antes do ASR. Duas estratégias:
+>
+> 1. **Primeiro: ativar o gate de espectadores** (já habilitado por padrão). Enquanto nenhum
+>    cliente WebSocket estiver conectado, nenhuma chamada Groq é feita.
+>
+> 2. **Se ainda bater a cota:** mova a tradução para local com NLLB. O ASR continua no Groq
+>    (rápido, cap alto), só a tradução sai dele:
+>    ```bash
+>    pip install -r requirements.local.txt   # torch + transformers + NLLB (~800 MB)
+>    ```
+>    Em `.env`:
+>    ```env
+>    TRANSLATION_BACKEND=nllb
+>    ```
+>    Custo: ~0,5–2 s de latência extra por legenda no CPU. Para um stream HLS com 10–15 s de
+>    atraso estrutural, é aceitável.
+
 ## Opções de linha de comando
 
 ```
@@ -233,6 +252,10 @@ Os testes unitários Python não precisam de torch — funcionam com a instalaç
   (há filtros de alucinação em `transcribe.py`, mas não são perfeitos).
 * Se o pipeline for mais lento que o tempo real, o log avisa (`falling behind`) e legendas antigas
   são descartadas. Use um modelo menor, Groq, ou GPU.
+* **Cota Groq (tradução):** no tier gratuito, `gpt-oss-20b` aceita ~1.000 req/dia. Com
+  espectadores ativos a tarde toda, isso se esgota. O gate de espectadores (zero chamadas sem
+  ninguém assistindo) é a primeira defesa. Se não for suficiente, use `TRANSLATION_BACKEND=nllb`
+  para tirar a tradução do Groq — veja a nota em "Tradução" acima.
 * O Silero VAD requer `torch`. Sem ele, o sistema usa `EnergyDetector` (detecção por RMS),
   que segmenta por energia sonora e não por pausa de fala. Em áudio com música/ruído, isto
   causa cortes no meio de frases (~5 s). O log alertará se **>50% dos segmentos forem "force-cut"**
