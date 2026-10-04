@@ -210,23 +210,31 @@ def _bytes_per_chunk(chunk_ms: int) -> int:
 
 def _build_ffmpeg_cmd(stream_url: str) -> list[str]:
     """
-    ffmpeg command: HLS in, raw 16 kHz mono PCM out on stdout.
+    ffmpeg command: HLS/file in, raw 16 kHz mono PCM out on stdout.
 
     * -live_start_index -1  start at the newest segment instead of the default
                             3rd-from-last, so we don't transcribe old audio
                             first and are already near the live edge.
+                            (HLS only, skipped for local files)
     * -reconnect*           auto-reconnect on network drops.
+                            (HLS only, skipped for local files)
     * No -re: we WANT segments as fast as they arrive; AudioClock accounts
                             for the burstiness.
     """
-    return [
-        "ffmpeg",
-        "-nostdin",
-        "-loglevel", "error",
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",
-        "-live_start_index", "-1",
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error"]
+    
+    # Only add HLS-specific options for HLS streams (http/https)
+    is_hls = stream_url.startswith("http://") or stream_url.startswith("https://")
+    
+    if is_hls:
+        cmd.extend([
+            "-reconnect", "1",
+            "-reconnect_streamed", "1",
+            "-reconnect_delay_max", "5",
+            "-live_start_index", "-1",
+        ])
+    
+    cmd.extend([
         "-i", stream_url,
         "-vn",
         "-ac", "1",
@@ -234,7 +242,9 @@ def _build_ffmpeg_cmd(stream_url: str) -> list[str]:
         "-f", "s16le",
         "-acodec", "pcm_s16le",
         "pipe:1",
-    ]
+    ])
+    
+    return cmd
 
 
 def _put(queue: asyncio.Queue, item: tuple, stats: dict) -> None:
