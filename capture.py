@@ -267,7 +267,7 @@ async def _reader_loop(queue: asyncio.Queue, stream_url: str, chunk_ms: int) -> 
     cmd = _build_ffmpeg_cmd(stream_url)
     chunker = Chunker(chunk_bytes)
     stats = {"dropped": 0, "last_warn": 0.0}
-    retry_delay = 2.0  # starts at 2 s, backs off up to 60 s
+    retry_delay = 2.0  # first retry after a healthy run resets to 2 s; initial is 2 s
     stall_s = 30.0  # no audio for 30 s = timeout
 
     logger.info("Starting ffmpeg capture from %s", stream_url)
@@ -306,7 +306,7 @@ async def _reader_loop(queue: asyncio.Queue, stream_url: str, chunk_ms: int) -> 
         healthy_s = 20.0
         retry_delay = 2.0 if (got_audio and up >= healthy_s) else min(retry_delay * 2, 60.0)
 
-        logger.warning("ffmpeg %s after %.0fs; stderr: %s; restart in %.0fs",
+        logger.warning("ffmpeg %s after %.0fs; stderr: %s; restart in ~%.0fs (±20%%)",
                        why, up, ff.stderr_tail or "-", retry_delay)
 
         await asyncio.sleep(retry_delay * random.uniform(0.8, 1.2))

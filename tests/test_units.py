@@ -515,10 +515,14 @@ def test_vad_marker_then_stream_continues_normally():
 
 # ── Viewer gate ───────────────────────────────────────────────────────────────
 
-def test_transcriber_skips_asr_when_no_viewers():
+def test_transcriber_skips_asr_when_no_viewers(monkeypatch):
     """When has_viewers() returns False, the Transcriber must discard segments
     without calling the ASR backend at all."""
     from transcribe import Transcriber
+    import transcribe
+    # Transcriber._run preloads the local Whisper model when GROQ_API_KEY is unset;
+    # these tests only exercise the viewer gate, so don't require faster-whisper.
+    monkeypatch.setattr(transcribe, "_load_model", lambda: None)
 
     asr_calls = []
 
@@ -556,9 +560,13 @@ def test_transcriber_skips_asr_when_no_viewers():
     assert out_items == 0, "No transcripts should reach the output queue"
 
 
-def test_transcriber_resumes_asr_when_viewer_connects():
+def test_transcriber_resumes_asr_when_viewer_connects(monkeypatch):
     """When has_viewers() flips from False to True, the next segment is processed."""
     from transcribe import Transcriber
+    import transcribe
+    # Transcriber._run preloads the local Whisper model when GROQ_API_KEY is unset;
+    # these tests only exercise the viewer gate, so don't require faster-whisper.
+    monkeypatch.setattr(transcribe, "_load_model", lambda: None)
 
     asr_calls = []
     viewer_flag = [False]  # mutable so the lambda sees updates

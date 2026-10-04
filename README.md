@@ -112,7 +112,7 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 | `GROQ_TIMEOUT_S` | `8` | Timeout por requisição à Groq (s). Uma chamada travada para todo o pipeline |
 | `GROQ_MAX_RETRIES` | `1` | Retentativas do SDK em 429 / 5xx / erro de rede |
 
-> **Nota:** `gpt-oss-20b` retorna raciocínio em um campo separado `.reasoning`; `max_completion_tokens` conta apenas tokens de saída, não tokens de raciocínio. Com raciocínio habilitado, planeje ~200–300 tokens extras. Deixe `GROQ_REASONING_EFFORT=off` para desabilitar e acelerar.
+> **Nota:** `gpt-oss-20b` retorna raciocínio em um campo separado `.reasoning`; `max_tokens` conta apenas tokens de saída, não tokens de raciocínio. Com raciocínio habilitado, planeje ~200–300 tokens extras. Deixe `GROQ_REASONING_EFFORT=off` para desabilitar e acelerar.
 
 ### Stream
 
