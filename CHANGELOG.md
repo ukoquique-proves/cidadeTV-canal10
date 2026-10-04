@@ -5,7 +5,103 @@ Most recent entry first.
 
 ---
 
-## 2026-10-04 — test isolation fix + cosmetic updates
+## 2026-10-04 — Prominent stream offline indication + monitoring
+
+### Problem
+When the upstream stream returns 404 (channel down or URL changed), the player showed
+only a small red dot in the status bar. Users had no clear indication that the stream
+was offline rather than buffering or having a transient network glitch.
+
+### Solution
+Three complementary improvements:
+
+1. **Proxy returns 503 instead of 404** — When `_fetch()` encounters a 404 from upstream,
+   it now returns `503 Service Unavailable` with body `"Stream offline"`. This tells
+   hls.js to keep retrying (404 would be treated as fatal and hls.js would give up).
+
+2. **Prominent offline banner on page** — When hls.js receives the 503, the error
+   handler shows a large red banner: `⚠ Stream offline (404) — o canal está fora do ar.
+   Tentando reconectar…` The banner is hidden when the stream recovers and starts
+   playing normally.
+
+3. **Stream monitor script** — New `check_stream.sh` polls the stream URL every 60 s
+   and prints HTTP status to console. Useful for watching when the stream comes back
+   online (`curl` wrapper, no external deps).
+
+### Implementation
+- `server.py`: `_fetch()` now checks `if sc == 404` and returns `Response(503, b"Stream offline")`.
+- `static/index.html`: Added CSS `.show` state for `#offline-banner` div. HLS error handler
+  checks response status and body, sets/clears the `.show` class accordingly.
+- `check_stream.sh`: Loop every 60 s, print timestamp + HTTP code.
+
+### Testing
+- All 7 page tests pass (banner does not interfere with normal flow).
+- Tested with local test HLS stream via `http.server 9100`.
+
+---
+
+## 2026-10-04 — Cleanup: single source of truth + requirements refactor
+
+### Changes
+
+**DEFAULT_STREAM_URL constant moved to capture.py**
+- Previously duplicated in `main.py`, `server.py`, and `capture.py`.
+- Now defined once in `capture.py` (the module that actually uses it).
+- `main.py` and `server.py` import and re-use the constant.
+
+**requirements.txt refactored into two files**
+- `requirements.groq.txt`: Core + Groq cloud ASR/translation (~50 MB, no torch).
+- `requirements.local.txt`: torch + faster-whisper + NLLB + Silero (~800 MB).
+- `requirements.txt`: Now simply includes both files via `-r` directives.
+- Pins live in ONE place per file — no duplication.
+- Users pick: `pip install -r requirements.groq.txt` (Groq) or
+  `pip install -r requirements.txt` (all models).
+
+**Minor cleanups**
+- Removed unused imports: `statistics` from `e2e_local_hls.py`, `os` from
+  `smoke_main.py`, `WINDOW_BYTES` from `test_units.py`.
+- Removed stale `WebSocketDisconnect` import from `server.py`; `Exception` catches it.
+- Updated docstrings: `max_completion_tokens` → `max_tokens` in README and `translate.py`.
+
+### Testing
+- All 33 unit tests pass.
+
+---
+
+## 2026-10-04 — Fixed button logic + end-to-end test with local HLS
+
+### Fixed: "Traducción - Minuto" button was inert
+
+**Root cause**: `setInterval(render, 100)` captured the original `render` function
+reference at binding time. The later `render = function(){...}` reassignment created
+a new function object, but the interval kept calling the old one — so `esVisible()`
+was never consulted.
+
+**Fix**: Made the original `render()` call `esVisible()` directly (hoisted function
+declaration, available everywhere). Deleted the dead reassignment block. `esVisible()`
+now handles all three ES-visibility conditions:
+1. `showEs` checkbox checked
+2. `peekActive` (60s "Traducción - Minuto" timer running)
+3. `pausedEs` (video is paused)
+
+### End-to-end test with local HLS
+
+Confirmed the entire pipeline works with `test_hls/stream.m3u8`:
+- Started `http.server 9100` in `test_hls/` folder.
+- Set `STREAM_URL=http://127.0.0.1:9100/stream.m3u8`.
+- App captured audio, VAD segmented, ASR → Groq, translation → Groq.
+- Captions arrived in browser via WebSocket.
+- Proxy correctly rewrote playlist URLs with HMAC signatures.
+
+### Stream monitor & next steps
+
+When TV Cidade 10 stream comes back online:
+1. Run `./check_stream.sh` to watch for HTTP 200 (polls every 60 s).
+2. If the official player works but app still gets 404, the URL changed —
+   check DevTools → Network tab → filter `m3u8` → copy new URL.
+3. Update `.env` with new `STREAM_URL` and restart.
+
+---
 
 ### Problem
 Without `GROQ_API_KEY`, the viewer-gate tests (`test_transcriber_skips_asr_when_no_viewers`
