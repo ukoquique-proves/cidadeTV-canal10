@@ -257,7 +257,7 @@
     function render() {
       const cur = scheduler.tick(performance.now());
       capPt.textContent = cur && showPt.checked ? cur.pt : '';
-      capEs.textContent = cur && showEs.checked ? cur.es : '';
+      capEs.textContent = cur && esVisible()    ? cur.es : '';
     }
     setInterval(render, 100);
 
@@ -414,14 +414,6 @@
     function esVisible() {
       return showEs.checked || peekActive || pausedEs;
     }
-
-    // Patch render() to use esVisible() instead of showEs.checked directly.
-    // We replace the render function defined above.
-    render = function () {
-      const cur = scheduler.tick(performance.now());
-      capPt.textContent = cur && showPt.checked ? cur.pt : '';
-      capEs.textContent = cur && esVisible()    ? cur.es : '';
-    };
 
     function peekEs() {
       peekActive = true;
