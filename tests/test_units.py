@@ -457,12 +457,15 @@ def test_groq_transient_error_classification():
 def test_reasoning_effort_only_for_gpt_oss(monkeypatch):
     import translate
     monkeypatch.delenv("GROQ_REASONING_EFFORT", raising=False)
-    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {"extra_body": {"reasoning_effort": "low"}}
+    # When env var not set, uses Groq's default (no param passed)
+    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {}
     assert translate._reasoning_kwargs("llama-3.1-8b-instant") == {}     # would be a 400
     monkeypatch.setenv("GROQ_REASONING_EFFORT", "medium")
-    assert translate._reasoning_kwargs("openai/gpt-oss-120b")["extra_body"]["reasoning_effort"] == "medium"
-    monkeypatch.setenv("GROQ_REASONING_EFFORT", "none")
-    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {}
+    # reasoning_effort passed directly when set
+    assert translate._reasoning_kwargs("openai/gpt-oss-120b") == {"reasoning_effort": "medium"}
+    monkeypatch.setenv("GROQ_REASONING_EFFORT", "off")
+    # off disables reasoning entirely via include_reasoning=False
+    assert translate._reasoning_kwargs("openai/gpt-oss-20b") == {"include_reasoning": False}
 
 
 def test_groq_translation_sends_reasoning_effort(monkeypatch):
@@ -482,7 +485,28 @@ def test_groq_translation_sends_reasoning_effort(monkeypatch):
     monkeypatch.setitem(sys.modules, "groq", types.SimpleNamespace(Groq=FakeGroq))
     monkeypatch.setenv("GROQ_API_KEY", "k-translate")
     monkeypatch.delenv("GROQ_TRANSLATE_MODEL", raising=False)
-    monkeypatch.delenv("GROQ_REASONING_EFFORT", raising=False)
+    monkeypatch.setenv("GROQ_REASONING_EFFORT", "low")  # explicitly set to test it's passed
     assert translate._translate_groq_sync("olá") == "hola"
     assert seen["model"] == "openai/gpt-oss-20b"
-    assert seen["extra_body"] == {"reasoning_effort": "low"}
+    # reasoning_effort is now passed directly, not via extra_body
+    assert seen["reasoning_effort"] == "low"
+
+
+def test_vad_detects_gap_wherever_it_falls():
+    # With 100 ms chunks the window buffer is empty at every 8th chunk boundary
+    # (3200 B chunk vs 1024 B window); a gap there used to go unnoticed and the
+    # segment silently spanned the missing audio (timestamps then drift).
+    for k in (15, 16, 17, 24):
+        gap_start, gap_end = k * 0.1, (k + 2) * 0.1
+        segs = asyncio.run(_run_vad(_tone(4), drop_chunks=(k, k + 1)))
+        for data, start_s, _ in segs:
+            end_s = start_s + len(data) / BYTES_PER_SEC
+            assert not (start_s < gap_start - 0.02 and end_s > gap_end + 0.02), \
+                f"segment {start_s:.2f}-{end_s:.2f} s spans the gap {gap_start:.1f}-{gap_end:.1f} s (k={k})"
+        assert len(segs) >= 2, f"gap at chunk {k} not detected"
+
+
+def test_vad_marker_then_stream_continues_normally():
+    pcm = _silence(0.5) + _tone(2) + _silence(1)
+    segs = asyncio.run(_run_vad(pcm, markers=(30,)))     # marker during the silence tail
+    assert len(segs) == 1 and 2.0 <= len(segs[0][0]) / BYTES_PER_SEC <= 2.9

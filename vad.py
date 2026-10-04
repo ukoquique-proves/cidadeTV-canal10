@@ -138,7 +138,9 @@ class VadSegmenter:
 
         # --- state of the current stream ---
         self._win_buf = bytearray()   # audio not yet processed (< 1 window after each chunk)
-        self._win_pos = 0             # byte position of _win_buf[0]
+        self._win_pos = 0             # byte position of _win_buf[0] (== next expected byte
+                                      # when the buffer is empty)
+        self._stream_started = False  # False until the first chunk after start/gap/marker
         self._reset_segment_state()
 
         # --- health tracking ---
@@ -197,12 +199,17 @@ class VadSegmenter:
                     self._end_stream()
                     continue
 
-                if self._win_buf and pos != self._win_pos + len(self._win_buf):
+                # The expected position is known even when the window buffer happens to
+                # be empty (every 8th chunk boundary with 100 ms chunks), so a dropped
+                # chunk there is detected too — not only when leftover bytes exist.
+                expected = self._win_pos + len(self._win_buf)
+                if self._stream_started and pos != expected:
                     logger.warning("Audio gap of %.2f s — ending current segment",
-                                   (pos - self._win_pos - len(self._win_buf)) / BYTES_PER_SEC)
+                                   (pos - expected) / BYTES_PER_SEC)
                     self._end_stream()
-                if not self._win_buf:
+                if not self._stream_started:
                     self._win_pos = pos
+                    self._stream_started = True
                 self._win_buf.extend(raw)
 
                 windows, positions = [], []
@@ -227,6 +234,7 @@ class VadSegmenter:
         """Flush what we have and forget buffered audio (gap in the stream)."""
         self._flush()
         self._win_buf.clear()
+        self._stream_started = False
         self._reset_segment_state()
         if self._detector is not None:
             self._detector.reset()
