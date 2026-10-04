@@ -106,11 +106,11 @@ def _translate_groq_sync(text: str) -> str:
     Translate PT→ES via Groq LLM (synchronous, runs in a thread executor).
     Uses the same GROQ_API_KEY as the ASR backend — no extra credentials.
 
-    Note on token limits: max_completion_tokens only counts OUTPUT tokens, not
-    REASONING tokens. gpt-oss-20b includes reasoning in a separate field. With
+    Note on token limits: max_tokens counts only OUTPUT tokens, not REASONING
+    tokens. gpt-oss-20b includes reasoning in a separate field. With
     reasoning_effort=medium (default), plan for ~200-300 reasoning tokens + your
-    actual translation. Set max_completion_tokens high enough (we use 2048) to
-    ensure the translation isn't truncated.
+    actual translation. Set max_tokens high enough (we use 2048) to ensure the
+    translation isn't truncated.
     """
     from groq_client import get_client
 
@@ -131,7 +131,7 @@ def _translate_groq_sync(text: str) -> str:
             {"role": "user", "content": text},
         ],
         temperature=0.2,
-        max_completion_tokens=2048,  # high enough for reasoning + translation
+        max_tokens=2048,  # Groq SDK 0.13.1 uses max_tokens (not max_completion_tokens)
         **_reasoning_kwargs(model),
     )
     return (completion.choices[0].message.content or "").strip()
