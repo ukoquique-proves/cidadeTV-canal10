@@ -41,6 +41,7 @@ import os
 import re
 import time
 import wave
+from typing import Callable
 
 import numpy as np
 
@@ -263,10 +264,20 @@ def _transcribe_segment(pcm_bytes: bytes) -> list[dict]:
 class Transcriber:
     """Consumes VAD segments, produces timed Portuguese text segments."""
 
-    def __init__(self, in_queue: asyncio.Queue, out_queue: asyncio.Queue) -> None:
+    def __init__(
+        self,
+        in_queue: asyncio.Queue,
+        out_queue: asyncio.Queue,
+        has_viewers: "Callable[[], bool] | None" = None,
+    ) -> None:
         self.in_queue = in_queue
         self.out_queue = out_queue
+        # Optional callable that returns True when at least one WebSocket client
+        # is connected.  When it returns False the segment is discarded without
+        # calling the ASR or translation backends, saving Groq quota.
+        self._has_viewers = has_viewers or (lambda: True)
         self._task: asyncio.Task | None = None
+        self._idle_logged = False   # log once per idle run, not per segment
 
     def start(self) -> asyncio.Task:
         self._task = asyncio.create_task(self._run(), name="transcribe")
@@ -295,6 +306,16 @@ class Transcriber:
         try:
             while True:
                 pcm_bytes, audio_start, t_emit = await self.in_queue.get()
+
+                if not self._has_viewers():
+                    if not self._idle_logged:
+                        logger.info("No viewers — ASR paused (segment discarded)")
+                        self._idle_logged = True
+                    continue
+                if self._idle_logged:
+                    logger.info("Viewer connected — ASR resumed")
+                    self._idle_logged = False
+
                 try:
                     subs = await loop.run_in_executor(None, _transcribe_segment, pcm_bytes)
                 except Exception as exc:  # noqa: BLE001

@@ -510,3 +510,92 @@ def test_vad_marker_then_stream_continues_normally():
     pcm = _silence(0.5) + _tone(2) + _silence(1)
     segs = asyncio.run(_run_vad(pcm, markers=(30,)))     # marker during the silence tail
     assert len(segs) == 1 and 2.0 <= len(segs[0][0]) / BYTES_PER_SEC <= 2.9
+
+
+# ── Viewer gate ───────────────────────────────────────────────────────────────
+
+def test_transcriber_skips_asr_when_no_viewers():
+    """When has_viewers() returns False, the Transcriber must discard segments
+    without calling the ASR backend at all."""
+    from transcribe import Transcriber
+
+    asr_calls = []
+
+    async def _run():
+        inq: asyncio.Queue = asyncio.Queue()
+        outq: asyncio.Queue = asyncio.Queue()
+
+        # Stub: record every ASR call, return empty
+        import transcribe
+        orig = transcribe._transcribe_segment
+        transcribe._transcribe_segment = lambda pcm: (asr_calls.append(len(pcm)) or [])
+
+        try:
+            t = Transcriber(inq, outq, has_viewers=lambda: False)
+            task = t.start()
+
+            # Feed three segments
+            for _ in range(3):
+                await inq.put((b"\x00" * 16000, 0.0, 0.0))
+
+            # Give the task a moment to consume them
+            await asyncio.sleep(0.05)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        finally:
+            transcribe._transcribe_segment = orig
+
+        return outq.qsize()
+
+    out_items = asyncio.run(_run())
+    assert asr_calls == [], "ASR should not be called when no viewers are connected"
+    assert out_items == 0, "No transcripts should reach the output queue"
+
+
+def test_transcriber_resumes_asr_when_viewer_connects():
+    """When has_viewers() flips from False to True, the next segment is processed."""
+    from transcribe import Transcriber
+
+    asr_calls = []
+    viewer_flag = [False]  # mutable so the lambda sees updates
+
+    async def _run():
+        inq: asyncio.Queue = asyncio.Queue()
+        outq: asyncio.Queue = asyncio.Queue()
+
+        import transcribe
+        orig = transcribe._transcribe_segment
+        transcribe._transcribe_segment = lambda pcm: (
+            asr_calls.append(len(pcm)) or [{"text": "ok", "start": 0.0, "end": 0.5}]
+        )
+
+        try:
+            t = Transcriber(inq, outq, has_viewers=lambda: viewer_flag[0])
+            task = t.start()
+
+            # First segment — no viewer
+            await inq.put((b"\x00" * 16000, 0.0, 0.0))
+            await asyncio.sleep(0.05)
+            assert asr_calls == [], "should skip with no viewer"
+
+            # Second segment — viewer arrives
+            viewer_flag[0] = True
+            await inq.put((b"\x00" * 16000, 1.0, 0.0))
+            await asyncio.sleep(0.05)
+
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        finally:
+            transcribe._transcribe_segment = orig
+
+        return outq.qsize()
+
+    out_items = asyncio.run(_run())
+    assert len(asr_calls) == 1, "ASR should be called exactly once after viewer connects"
+    assert out_items == 1, "One transcript should reach the output queue"

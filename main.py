@@ -60,7 +60,7 @@ for _note in _ENV_NOTES:
 
 from capture import DEFAULT_QUEUE_CHUNKS, clock, start_capture, stop_capture  # noqa: E402
 from captions import expand, to_message  # noqa: E402
-from server import create_app, push_caption  # noqa: E402
+from server import create_app, push_caption, _manager  # noqa: E402
 from transcribe import Transcriber, _resolve_config as _whisper_config  # noqa: E402
 from translate import _GROQ_TRANSLATE_MODEL_DEFAULT, Translator, _active_backend  # noqa: E402
 from vad import VadSegmenter  # noqa: E402
@@ -165,7 +165,8 @@ def build_pipeline(args: argparse.Namespace) -> list[asyncio.Task]:
     tasks = [
         start_capture(pcm_queue, stream_url=stream, chunk_ms=100),
         VadSegmenter(pcm_queue, segment_queue).start(),
-        Transcriber(segment_queue, transcript_queue).start(),
+        Transcriber(segment_queue, transcript_queue,
+                    has_viewers=lambda: _manager.count > 0).start(),
         Translator(transcript_queue, caption_queue).start(),
     ]
     out = _print_captions if args.capture_only else _push_captions
