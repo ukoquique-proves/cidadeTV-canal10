@@ -5,6 +5,27 @@ Most recent entry first.
 
 ---
 
+## 2026-10-04 — test isolation fix + cosmetic updates
+
+### Problem
+Without `GROQ_API_KEY`, the viewer-gate tests (`test_transcriber_skips_asr_when_no_viewers`
+and `test_transcriber_resumes_asr_when_viewer_connects`) would try to load the local
+faster-whisper model, which fails on CI or a fresh clone where `pip install -r requirements.local.txt`
+was not run.
+
+### Solution
+Monkeypatch `_load_model` to `lambda: None` in both tests. This stubs out the heavy
+model load while letting the tests exercise only the viewer gate logic. All 39 tests
+now pass in three configurations: no key/current SDK, no key/pinned groq==0.13.1,
+and with a key.
+
+### Other fixes
+- `capture.py`: log message now shows `~N s (±20%%)` to clarify jitter is applied;
+  initial retry comment clarified (2 s after healthy run, not "4 s" as previously implied).
+- `README.md`: corrected `max_completion_tokens` → `max_tokens` (code uses `max_tokens`).
+
+---
+
 ## 2026-10-04 — Groq translation fix (extra_body) + capture process tests
 
 ### Problem
