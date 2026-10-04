@@ -8,8 +8,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Node (page tests)
+node_modules/
+package-lock.json
+
 # Editor / OS
 .vscode/
 .DS_Store
 capture.py.backup
 *.backup
+test_hls/

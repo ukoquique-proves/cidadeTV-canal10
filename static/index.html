@@ -357,7 +357,13 @@
         hlsFailed = true;
         hlsDot.className = 'dot red';
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          hlsStatus.textContent = 'rede — tentando de novo…';
+          // 503 = proxy got 404 from upstream (stream offline); keep retrying.
+          const is404 = data.networkDetails && data.networkDetails.response &&
+                        data.networkDetails.response.status === 503 &&
+                        data.networkDetails.response.responseText &&
+                        data.networkDetails.response.responseText.startsWith('Stream offline');
+          hlsStatus.textContent = is404 ? 'Stream offline (404) — tentando de novo…'
+                                        : 'rede — tentando de novo…';
           hls.startLoad();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           hlsStatus.textContent = 'erro de mídia — recuperando…';

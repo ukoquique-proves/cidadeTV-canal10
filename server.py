@@ -217,7 +217,12 @@ async def _fetch(url: str) -> httpx.Response | Response:
         resp.raise_for_status()
         return resp
     except httpx.HTTPStatusError as exc:
-        return Response(status_code=exc.response.status_code, content=b"Upstream error")
+        sc = exc.response.status_code
+        if sc == 404:
+            # Return 503 so hls.js keeps retrying (404 makes it give up entirely).
+            # Include a recognisable body so the page can show a clear message.
+            return Response(status_code=503, content=b"Stream offline")
+        return Response(status_code=sc, content=b"Upstream error")
     except httpx.HTTPError as exc:
         logger.error("Proxy fetch error: %s", exc)
         return Response(status_code=502, content=b"Bad Gateway")
