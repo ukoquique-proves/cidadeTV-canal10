@@ -38,7 +38,9 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   console.log('ok   single reconnect after error+close');
 
   // 3) a caption is shown at latency - age_start and hidden after the speech ends
+  //    ES is hidden by default (checkbox unchecked); check it to test ES too
   sockets[1].readyState = 1; sockets[1].onopen();
+  d.getElementById('show-es').checked = true;
   sockets[1].onmessage({ data: JSON.stringify({ pt: 'Olá mundo', es: 'Hola mundo', age_start: 9.5, age_end: 9.0 }) });
   await sleep(250);  assert.strictEqual(d.getElementById('caption-pt').textContent, '', 'shown too early');
   await sleep(700);  assert.strictEqual(d.getElementById('caption-pt').textContent, 'Olá mundo');
