@@ -5,6 +5,40 @@ Most recent entry first.
 
 ---
 
+## 2026-10-04 — Groq translation fix (extra_body) + capture process tests
+
+### Problem
+The `groq==0.13.1` SDK rejects `reasoning_effort` and `include_reasoning` as
+keyword arguments to `chat.completions.create()`. The previous fix changed
+`max_completion_tokens` → `max_tokens`, which is correct, but kept passing
+`**_reasoning_kwargs(model)` directly — which caused every translation to fail
+with a `TypeError`. Spanish captions stayed blank.
+
+### Solution
+Wrap `_reasoning_kwargs()` result in `{"extra_body": reasoning}`. The SDK
+accepts `extra_body` on every version, while rejecting direct kwargs when they
+are newer than the SDK. This keeps `reasoning_effort=off|low|medium|high` and
+`include_reasoning=False` working.
+
+### Implementation
+- `translate.py`: `**({"extra_body": reasoning} if reasoning else {})` instead of
+  `**_reasoning_kwargs(model)`.
+- `tests/test_units.py`: two existing tests updated to assert `extra_body` instead
+  of direct kwargs; new `test_groq_call_kwargs_are_accepted_by_installed_sdk` checks
+  every effort level against the real SDK signature.
+- `tests/test_capture_process.py`: new file — 6 tests for `FfmpegProcess`, `Chunker`,
+  and `_reader_loop` using a fake ffmpeg subprocess.
+
+### Other recent changes
+- `capture.py`: concurrent stderr drain prevents ffmpeg from blocking on full pipe.
+- `vad.py`: `VAD_*=0` now respected; pre-roll no longer counted toward min_speech.
+- `main.py`: viewer-gated ASR/translation; Groq quota saver.
+- `static/index.html`: "Traducción - Minuto" button; pause-to-show-ES.
+- `.env`: fixed `GITHUB_REPOSITORY` (was `GITHUB-REPOSITORY` with hyphen); added
+  Groq optional vars commented out.
+
+---
+
 ## 2026-10-04 — "Traducción - Minuto" button + pause-to-show ES
 
 ### Problem
