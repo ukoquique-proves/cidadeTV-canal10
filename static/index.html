@@ -121,6 +121,21 @@
     #status .dot.green  { background: #22c55e; }
     #status .dot.yellow { background: #eab308; }
     #status .dot.red    { background: #ef4444; }
+    
+    /* Stream offline banner */
+    #offline-banner {
+      display: none;
+      background: #1a0000;
+      border: 2px solid #ef4444;
+      border-radius: 6px;
+      padding: 1rem;
+      margin: 0.5rem 0;
+      text-align: center;
+      color: #ef4444;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+    #offline-banner.show { display: block; }
 
     /* ── Controls ───────────────────────────────────────────────────── */
     .controls {
@@ -182,6 +197,11 @@
       <div id="caption-es" class="caption-line" aria-label="Subtítulo en español"></div>
       <div id="caption-pt" class="caption-line" aria-label="Legenda em português"></div>
     </div>
+  </div>
+
+  <!-- Stream offline banner (shown when upstream returns 404) -->
+  <div id="offline-banner">
+    ⚠ Stream offline (404) — o canal está fora do ar. Tentando reconectar…
   </div>
 
   <!-- Status row -->
@@ -339,6 +359,7 @@
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         hlsDot.className = 'dot green';
         hlsStatus.textContent = 'ao vivo';
+        $('offline-banner').classList.remove('show');
         video.play().catch(() => { hlsStatus.textContent = 'clique em play'; });
       });
 
@@ -362,8 +383,13 @@
                         data.networkDetails.response.status === 503 &&
                         data.networkDetails.response.responseText &&
                         data.networkDetails.response.responseText.startsWith('Stream offline');
-          hlsStatus.textContent = is404 ? 'Stream offline (404) — tentando de novo…'
-                                        : 'rede — tentando de novo…';
+          if (is404) {
+            hlsStatus.textContent = 'Stream offline — tentando de novo…';
+            $('offline-banner').classList.add('show');
+          } else {
+            hlsStatus.textContent = 'rede — tentando de novo…';
+            $('offline-banner').classList.remove('show');
+          }
           hls.startLoad();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           hlsStatus.textContent = 'erro de mídia — recuperando…';
