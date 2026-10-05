@@ -159,6 +159,26 @@ curl -s http://127.0.0.1:8000/health
 
 ## Step 5 — ⚠ Register the app in YunoHost (private at first)
 
+> **Three things have not been verified on this server yet. Read before you type.**
+>
+> 1. **Is the Reverse-Proxy app in your catalog?**
+>    `sudo yunohost app search reverse` (from Step 1) must return it. If it does not
+>    appear, this step cannot proceed — stop and find the correct app id or an
+>    alternative before continuing.
+>
+> 2. **What does the app ask during install?**
+>    The exact prompts are unknown. Read each one before answering. In particular:
+>    if it asks who may access the app, choose the **private / admins-only** option —
+>    do not make it public yet (Step 7 does that deliberately, after a backup).
+>    After install, confirm with `yunohost user permission list` that visitors are
+>    **not** listed — some apps add them automatically.
+>
+> 3. **Does its nginx file include the WebSocket lines?**
+>    Without `Upgrade`, `Connection "upgrade"`, and the timeout headers, captions
+>    fail silently — the page loads but nothing ever arrives. The check below tells
+>    you exactly what is missing. A later `yunohost app upgrade` may overwrite any
+>    manual edits to this file, so re-check it after every upgrade of the proxy app.
+
 ```bash
 sudo yunohost app install <reverse-proxy-app-id>   # id from Step 1; interactive
 ```
