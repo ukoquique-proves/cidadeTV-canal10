@@ -80,7 +80,13 @@ Before deploying, you need to know:
    - Result of: `yunohost app search reverse`
    - Needed for Step 5.
 
-If you don't have these answers yet, **stop here and search the kilombo-wp documentation or your session history for the deployment pattern**. Once you have them, continue to Step 1.
+If you don't have these answers yet, **stop here and analyze the `/root/TVcidade10/YUNOHOST/example-kilombo-wp.tar.gz` archive and the `new.kilombo.top` project to find the deployment pattern and answers**. Once you have them, continue to Step 1.
+
+**Where to look:**
+- **CHANGELOG.md** and **AGENT.md** in kilombo-wp — how the site was deployed
+- **Git log** of kilombo-wp — commit messages for deployment steps
+- **README.md** and **PHASE6-PLAN.md** — documentation of the setup
+- The actual running site at `https://new.kilombo.top` (YunoHost admin panel at `/yunohost/admin`)
 
 ---
 
