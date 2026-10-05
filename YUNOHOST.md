@@ -1,95 +1,132 @@
 # Deploying on YunoHost
 
-YunoHost is a Debian-based self-hosting platform. This app has no YunoHost package,
-so installation is done manually via SSH — but everything works because YunoHost is
-standard Debian under the hood.
+This follows the same pattern as the `kilombo-wp` project: **everything that touches
+the server goes through YunoHost itself** (domain, certificate, app, permission,
+backup) instead of hand-edited nginx files.
 
-## Prerequisites
+Why this matters: YunoHost's login layer (SSOwat) only lets a request through when it
+matches a permission that belongs to a registered app. A hand-written nginx snippet
+has no permission, so visitors are redirected to the YunoHost login. tv10 therefore
+has to sit behind a real YunoHost app, and be opened to the public with
+`yunohost user permission add <app>.main visitors` — exactly what
+`wp-setup.sh publish` does for WordPress.
 
-- A YunoHost server with a domain configured (e.g. `tv.yourdomain.com`)
-- SSH access to the server
-- A free Groq API key from https://console.groq.com/keys
-- ffmpeg installed (`sudo apt install ffmpeg`)
+```
+visitor ──https──▶ nginx (YunoHost, Let's Encrypt) ──▶ Reverse-Proxy app ──▶ 127.0.0.1:8000
+                                                                              tvcidade10.service (this repo)
+```
+
+> **Status of this guide.** The domain / certificate / backup / permission steps are
+> the ones already used successfully for `new.kilombo.top`. The **Reverse-Proxy app**
+> (Step 5) has *not* been tried on this server yet: confirm it exists in your catalog
+> and read each prompt before answering. Steps marked ⚠ depend on it.
 
 ---
 
-## Step 1 — Clone and start the app
+## Working rules (from kilombo-wp `AGENT.md`)
 
-```bash
-ssh admin@yourdomain.com
-
-# Install ffmpeg if not already present
-sudo apt install -y ffmpeg
-
-# Clone the repo somewhere outside the YunoHost web root
-cd /opt
-sudo git clone https://github.com/ukoquique-proves/cidadeTV-canal10.git tvcidade10
-sudo chown -R $USER:$USER /opt/tvcidade10
-cd /opt/tvcidade10
-
-# First run: creates venv, installs deps, copies .env, starts the app
-GROQ_API_KEY=gsk_... ./start.sh
-```
-
-The app starts on `http://127.0.0.1:8000`. Press Ctrl+C once you confirm it starts
-cleanly — the systemd unit (Step 3) will keep it running permanently.
+1. One step at a time. Read the output before the next step.
+2. Back up before every risky change and write the archive name in `CHANGELOG.md`.
+3. Never paste passwords or API keys into files, commands or commit messages.
+   The Groq key is typed into `.env` on the server with an editor — never on a command line.
+4. If a command fails, **stop and report the exact error**. Do not retry variations
+   (fail2ban has already banned this operator's IP once).
+5. Do not touch the other apps on the server (old SPIP, `/vpnadmin`, `/neutrinet`,
+   WordPress, firewall, VPN).
 
 ---
 
-## Step 2 — Nginx reverse proxy
+## Step 0 — Choose the domain and point DNS at the server
 
-YunoHost manages nginx through its own config system. Add a custom snippet for the
-subdomain. Create the file:
+**`tv10.cidade` cannot work.** As far as I know `.cidade` is not a real top-level
+domain, so there is no public DNS for it and Let's Encrypt can never issue a
+certificate for it. Use **`tv10.cidade.top`** — this needs you to own (or register)
+`cidade.top`. This guide uses that name; replace it everywhere if you pick another.
+(`tv.kilombo.top` is deliberately not used.)
 
-```bash
-sudo nano /etc/nginx/conf.d/tv.yourdomain.com.d/tvcidade10.conf
-```
+Create a DNS record at wherever `cidade.top` is managed:
 
-Paste:
+| Type | Name | Value |
+|---|---|---|
+| A | `tv10` | the server's public IPv4 |
+| AAAA | `tv10` | the server's IPv6, only if the server has one |
 
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8000;
-    proxy_http_version 1.1;
-
-    # Required for WebSocket (captions)
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-
-    # Allow long-lived WebSocket connections
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-}
-```
-
-> **Note:** The `Upgrade` and `Connection` headers are essential. Without them
-> WebSocket connections silently fail and captions never arrive in the browser.
-
-Test and reload nginx:
+A wildcard `*` record for `cidade.top` also works. After DNS propagates, on your
+own machine:
 
 ```bash
-sudo nginx -t && sudo systemctl reload nginx
+getent hosts tv10.cidade.top      # must print the server's IP
 ```
-
-YunoHost handles HTTPS and Let's Encrypt certificates automatically for configured
-subdomains — no extra steps needed.
 
 ---
 
-## Step 3 — systemd service (auto-start on reboot + auto-restart on crash)
+## Step 1 — Preflight (on the server)
 
-Create the service unit:
+SSH in the same way as for kilombo-wp (key authentication, non-default port).
+
+```bash
+free -m | awk '/^Mem:/{print "RAM available MB:", $7}'
+df -m / | awk 'NR==2{print "disk free MB:", $4}'
+python3 --version                                 # needs 3.10+
+sudo apt install -y ffmpeg git python3-venv       # python3-venv: Debian needs it for venv
+getent hosts tv10.cidade.top                      # DNS resolves
+sudo yunohost app list                            # note what is installed; do not touch it
+sudo yunohost app search reverse                  # ⚠ find the Reverse Proxy app id
+```
+
+The Groq-only install is light (about 50 MB of dependencies, no local models).
+
+---
+
+## Step 2 — Add the domain and the certificate
+
+```bash
+sudo yunohost domain add tv10.cidade.top
+sudo yunohost diagnosis run dnsrecords web
+sudo yunohost diagnosis show --issues             # fix anything about tv10.cidade.top first
+sudo yunohost domain cert install tv10.cidade.top # Let's Encrypt
+```
+
+---
+
+## Step 3 — Install tv10 itself (as its own system user)
+
+```bash
+sudo useradd --system --home-dir /opt/tvcidade10 --shell /usr/sbin/nologin tv10svc
+sudo git clone https://github.com/ukoquique-proves/cidadeTV-canal10.git /opt/tvcidade10
+sudo chown -R tv10svc:tv10svc /opt/tvcidade10
+
+# Create .env and put the key in with an editor (not on the command line)
+sudo -u tv10svc cp /opt/tvcidade10/.env.example /opt/tvcidade10/.env
+sudo -u tv10svc chmod 600 /opt/tvcidade10/.env
+sudo -u tv10svc nano /opt/tvcidade10/.env
+```
+
+In the editor: uncomment `GROQ_API_KEY=` and paste the key
+(free key: https://console.groq.com/keys). Check `STREAM_URL`; leave `HOST=127.0.0.1`
+and `PORT=8000`. A Groq-only install has no local models, so **the key is required**.
+
+First run (creates the venv, installs dependencies, starts the app):
+
+```bash
+sudo -u tv10svc /opt/tvcidade10/start.sh
+```
+
+In a second SSH session:
+
+```bash
+curl -s http://127.0.0.1:8000/health             # {"status":"ok","ws_clients":0}
+```
+
+Then press Ctrl+C in the first session — systemd will run it from now on.
+
+---
+
+## Step 4 — systemd service
 
 ```bash
 sudo nano /etc/systemd/system/tvcidade10.service
 ```
-
-Paste (adjust `User` and paths if needed):
 
 ```ini
 [Unit]
@@ -99,79 +136,110 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=admin
+User=tv10svc
+Group=tv10svc
 WorkingDirectory=/opt/tvcidade10
 ExecStart=/opt/tvcidade10/venv/bin/python main.py
 Restart=always
 RestartSec=10
-# Environment is read from .env by the app itself — no EnvironmentFile needed.
-# If you prefer to keep the key out of .env, uncomment the line below:
-# Environment="GROQ_API_KEY=gsk_..."
+# The app reads /opt/tvcidade10/.env itself — no EnvironmentFile needed.
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start:
-
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable tvcidade10
-sudo systemctl start tvcidade10
-
-# Check it's running
+sudo systemctl enable --now tvcidade10
 sudo systemctl status tvcidade10
-sudo journalctl -u tvcidade10 -f   # live logs
+curl -s http://127.0.0.1:8000/health
 ```
 
 ---
 
-## Step 4 — Configure the subdomain in YunoHost
-
-In the YunoHost admin panel (`https://yourdomain.com/yunohost/admin`):
-
-1. Go to **Domains → tv.yourdomain.com → DNS configuration**
-2. Confirm the subdomain points to your server's IP
-3. Go to **Domains → tv.yourdomain.com → Certificate** → Install Let's Encrypt cert
-   (if not already done automatically)
-
-After this, `https://tv.yourdomain.com` should serve the player with a valid HTTPS cert.
-
----
-
-## Step 5 — Check .env for public access
-
-Edit `/opt/tvcidade10/.env` and make sure these are set (they are the defaults):
-
-```dotenv
-HOST=127.0.0.1    # nginx proxies from outside; the app only binds locally
-PORT=8000         # must match proxy_pass in Step 2
-```
-
-The app does NOT need `HOST=0.0.0.0` when nginx is proxying — binding to localhost
-is safer (the app is not directly exposed to the internet).
-
-If the channel's playlist or segments are served from a different host than
-`STREAM_URL`, add it to `PROXY_ALLOWED_HOSTS` (e.g. `.logicahost.com.br`); otherwise
-the proxy answers 403 "Host not allowed" for those requests. After editing `.env`:
-`sudo systemctl restart tvcidade10`.
-
----
-
-## Verify it works
+## Step 5 — ⚠ Register the app in YunoHost (private at first)
 
 ```bash
-# Proxy serves the stream playlist
-curl -s https://tv.yourdomain.com/proxy/playlist | head -5
-
-# WebSocket upgrade succeeds (should return HTTP 101)
-curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
-     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-     -H "Sec-WebSocket-Version: 13" \
-     https://tv.yourdomain.com/captions
+sudo yunohost app install <reverse-proxy-app-id>   # id from Step 1; interactive
 ```
 
-Open `https://tv.yourdomain.com` in a browser — you should see the player.
+Answer the prompts: domain `tv10.cidade.top`, path `/`, destination = the local
+port 8000 (read the prompt for the exact format it wants). If it asks who may access
+it, choose the private option, as was done for WordPress (`access=admins`).
+
+Then note the app id YunoHost gave it and look at what was created:
+
+```bash
+export APP_ID=<app id from: sudo yunohost app list>
+sudo yunohost user permission list | grep -A6 "$APP_ID.main"   # should NOT include visitors yet
+sudo cat /etc/nginx/conf.d/tv10.cidade.top.d/$APP_ID.conf
+```
+
+**WebSocket check (captions travel over a WebSocket).** Inside the `location /` block
+of that file there must be all of:
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+```
+
+If any are missing, add them (`sudo nano` the file). If `nginx -t` then complains that a
+directive is duplicate, remove the duplicate line. Then:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Keep a copy of the final block in your notes: YunoHost may rewrite this file when the
+proxy app is upgraded, so re-check it after any `yunohost app upgrade`.
+
+Private check (the SSO login redirect is expected here):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.top/    # expect 302
+```
+
+---
+
+## Step 6 — Backup, then record it
+
+```bash
+sudo yunohost backup create --name tv10-$(date +%Y%m%d-%H%M) --apps $APP_ID
+ls -lh /home/yunohost.backup/archives/ | tail -3
+```
+
+Write the archive name in `CHANGELOG.md`. This backs up the YunoHost side (the proxy
+app and its config). The code is in git, and the Groq key can be re-issued, so
+nothing else needs saving.
+
+---
+
+## Step 7 — Open it to the public
+
+```bash
+sudo yunohost user permission add $APP_ID.main visitors
+```
+
+---
+
+## Verify (from your own computer, not the server)
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.top/     # expect 200
+curl -s https://tv10.cidade.top/health                                # {"status":"ok",...}
+curl -s https://tv10.cidade.top/proxy/playlist | head -5              # #EXTM3U ...
+
+# WebSocket upgrade must answer HTTP/1.1 101
+curl -i -N -m 3 -H "Connection: Upgrade" -H "Upgrade: websocket" \
+     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
+     https://tv10.cidade.top/captions | head -3
+```
+
+Then open `https://tv10.cidade.top` in a private browser window: the video should play
+and, once the channel is speaking, Portuguese captions appear (tick "Mostrar ES" for Spanish).
 
 ---
 
@@ -179,33 +247,31 @@ Open `https://tv.yourdomain.com` in a browser — you should see the player.
 
 ```bash
 cd /opt/tvcidade10
-git pull
+sudo -u tv10svc git pull
 sudo systemctl restart tvcidade10
 ```
 
-If `requirements.groq.txt` changed, reinstall deps first:
+If `requirements.groq.txt` changed, install before restarting:
 
 ```bash
-source venv/bin/activate
-pip install -r requirements.groq.txt
-deactivate
-sudo systemctl restart tvcidade10
+sudo -u tv10svc /opt/tvcidade10/venv/bin/pip install -r /opt/tvcidade10/requirements.groq.txt
 ```
+
+Open browser tabs recover by themselves after a restart (the page rebuilds the player
+when its signed stream URLs stop working).
 
 ---
 
 ## Monitoring
 
 ```bash
-# Live logs
-sudo journalctl -u tvcidade10 -f
-
-# Check stream is online
-./check_stream.sh
-
-# App health
-curl -s https://tv.yourdomain.com/health
+sudo journalctl -u tvcidade10 -f                   # live logs (look for 429/401 from Groq)
+cd /opt/tvcidade10 && sudo -u tv10svc ./check_stream.sh   # is the TV stream itself up?
+curl -s https://tv10.cidade.top/health
 ```
+
+Run `check_stream.sh` as `tv10svc`: `.env` is private to that user, and otherwise the
+script silently falls back to the default stream URL.
 
 ---
 
@@ -213,24 +279,36 @@ curl -s https://tv.yourdomain.com/health
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Page loads but no video | Stream offline or URL changed | Run `./check_stream.sh`; update `STREAM_URL` in `.env` |
-| Captions never appear | WebSocket not upgrading | Check nginx config has `Upgrade`/`Connection` headers |
-| 502 Bad Gateway | App not running | `sudo systemctl status tvcidade10` |
-| 403 on `/proxy/segment` | HMAC signature mismatch (app restarted mid-session) | The page rebuilds the player by itself within ~1 s; if it does not, reload. A 403 "Host not allowed" instead means the host is missing from `PROXY_ALLOWED_HOSTS` |
-| Spanish captions blank | Groq quota hit or key invalid | Check `sudo journalctl -u tvcidade10` for 429/401 errors |
-| App doesn't restart after reboot | systemd unit not enabled | `sudo systemctl enable tvcidade10` |
+| Public visitors land on the YunoHost login (302) | `visitors` permission not added | Step 7; check with `sudo yunohost user permission list` |
+| Certificate step fails | DNS not pointing at the server yet | `getent hosts tv10.cidade.top`; `sudo yunohost diagnosis run dnsrecords web` |
+| 502 Bad Gateway | tv10 service is down, or wrong port in the proxy app | `sudo systemctl status tvcidade10`; destination must be port 8000 |
+| Page loads, captions never arrive | WebSocket headers missing in the nginx file | Step 5 WebSocket check; the `101` test above |
+| Page loads but no video | TV stream offline or URL changed | `check_stream.sh`; update `STREAM_URL` in `.env`, restart the service |
+| 403 "Host not allowed" on stream requests | Stream host differs from `STREAM_URL`'s host | Add it to `PROXY_ALLOWED_HOSTS` in `.env`, restart |
+| Spanish captions blank | Groq quota exhausted or key invalid | `journalctl -u tvcidade10` for 429/401 |
+| App missing after reboot | service not enabled | `sudo systemctl enable tvcidade10` |
+
+---
+
+## Rolling back
+
+```bash
+sudo yunohost user permission remove $APP_ID.main visitors   # close it to the public again
+sudo systemctl disable --now tvcidade10                      # stop the app
+sudo yunohost app remove $APP_ID                             # remove only the proxy app
+```
+
+Restoring a backup: `sudo yunohost backup restore <archive name>`.
 
 ---
 
 ## Security notes
 
-- The app binds to `127.0.0.1` — not exposed directly to the internet.
-- The HLS proxy uses HMAC-signed URLs to prevent open relay (SSRF).
-- `PROXY_ALLOWED_HOSTS` in `.env` limits which upstream hosts the proxy will contact.
-- Keep `GROQ_API_KEY` out of git — it lives only in `.env` which is gitignored.
-- For extra security, create a dedicated system user instead of running as `admin`:
-  ```bash
-  sudo useradd -r -s /bin/false -d /opt/tvcidade10 tvcidade10svc
-  sudo chown -R tvcidade10svc:tvcidade10svc /opt/tvcidade10
-  # Then set User=tvcidade10svc in the systemd unit
-  ```
+- The app listens on `127.0.0.1` only; the outside world reaches it through nginx.
+- It runs as the unprivileged `tv10svc` user, and `.env` is `chmod 600`.
+- After Step 7 the player is public by design. Captioning runs once for all viewers and
+  pauses when nobody is watching, so more viewers do not mean more Groq calls.
+- The HLS proxy only signs and fetches URLs on `STREAM_URL`'s host plus
+  `PROXY_ALLOWED_HOSTS`; it is not an open relay.
+- Keep `GROQ_API_KEY` out of git and out of shell history. If it leaks, revoke it in the
+  Groq console and put a new one in `.env`.
