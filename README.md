@@ -147,6 +147,24 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 
 ## Configuração (`.env` — veja `.env.example`)
 
+### Sobre `.env` e GitHub
+
+O arquivo `.env` contém **credenciais de runtime** — valores que o app lê enquanto está rodando.
+O projeto **não lê nem usa tokens do GitHub** em tempo de execução:
+
+- **Git push:** usa credenciais do sistema (SSH key em `~/.ssh/` ou token armazenado no credential helper do SO).
+  Git nunca lê `.env`. Se você fez push antes, suas credenciais já estão cacheadas no SO.
+- **GitHub API:** o app não chama a API do GitHub.
+- **Chave em `.env.example`:** não há necessidade. Removida na versão 0bd0209 para evitar:
+  - Spreading de credenciais desnecessárias em cada novo servidor
+  - Risco de exposição acidental em logs, backups ou auditorias de segurança
+  - Confusão sobre o que a aplicação realmente precisa
+
+Se você usa `.env` em scripts pessoais fora deste projeto (ex: `source .env && git push https://$GITHUB_TOKEN@...`),
+continue gerenciando esse token como quiser — apenas não o coloque em `.env.example` nem compartilhe o `.env` de produção.
+
+---
+
 ### Groq (recomendado)
 
 | Variável | Padrão | Descrição |
