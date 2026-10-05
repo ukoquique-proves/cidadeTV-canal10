@@ -100,6 +100,27 @@
     /* Hide a line when it has no content */
     .caption-line:empty { display: none; }
 
+
+    /* ── Fullscreen: the WRAPPER goes fullscreen so the caption overlay stays on top ── */
+    #btn-fs {
+      position: absolute; top: 8px; right: 8px; z-index: 20;
+      padding: 0.2em 0.55em; font-size: 1.1rem; line-height: 1;
+      background: rgba(0,0,0,0.55); border-color: rgba(255,255,255,0.25);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .player-wrap:hover #btn-fs, #btn-fs:focus { opacity: 1; }
+    @media (hover: none) { #btn-fs { opacity: 0.8; } }
+    .player-wrap:fullscreen, .player-wrap.pseudo-fs {
+      max-width: none; width: 100vw; height: 100vh; aspect-ratio: auto; border-radius: 0;
+    }
+    .player-wrap.pseudo-fs { position: fixed; inset: 0; z-index: 9999; }
+    .player-wrap:fullscreen #caption-overlay,
+    .player-wrap.pseudo-fs #caption-overlay { max-width: 90%; }
+    .player-wrap:fullscreen .caption-line,
+    .player-wrap.pseudo-fs .caption-line { font-size: clamp(1.2rem, 3.2vw, 2.4rem); }
+    .player-wrap:fullscreen #caption-es,
+    .player-wrap.pseudo-fs #caption-es { font-size: clamp(1.05rem, 2.8vw, 2rem); }
+
     /* ── Status bar ─────────────────────────────────────────────────── */
     #status {
       font-size: 0.78rem;
@@ -190,7 +211,8 @@
 
   <!-- Video player -->
   <div class="player-wrap">
-    <video id="video" controls playsinline></video>
+    <video id="video" controls playsinline controlsList="nofullscreen"></video>
+    <button id="btn-fs" type="button" title="Tela cheia (com legendas)" aria-label="Tela cheia">⛶</button>
 
     <!-- Dual-line caption overlay: ES (translation) on top, PT (original) below -->
     <div id="caption-overlay">
@@ -462,6 +484,41 @@
     // Show ES while paused; hide again on play (unless checkbox or peek keep it on).
     video.addEventListener('pause', () => { pausedEs = true;  });
     video.addEventListener('play',  () => { pausedEs = false; });
+
+    // ── Fullscreen on the wrapper (keeps captions visible) ────────────────
+    const playerWrap = document.querySelector('.player-wrap');
+    function toggleFullscreen() {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl || playerWrap.classList.contains('pseudo-fs')) {
+        playerWrap.classList.remove('pseudo-fs');
+        if (fsEl) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        return;
+      }
+      const req = playerWrap.requestFullscreen || playerWrap.webkitRequestFullscreen;
+      if (req) {
+        const r = req.call(playerWrap);
+        if (r && r.catch) r.catch(() => playerWrap.classList.add('pseudo-fs'));
+      } else {
+        playerWrap.classList.add('pseudo-fs');   // e.g. iPhone Safari: no element fullscreen
+      }
+    }
+    $('btn-fs').addEventListener('click', toggleFullscreen);
+    video.addEventListener('dblclick', toggleFullscreen);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') playerWrap.classList.remove('pseudo-fs');
+    });
+
+    // If the browser puts only <video> fullscreen (e.g. native controls button or F11),
+    // exit that and re-enter with the wrapper so the caption overlay stays visible.
+    document.addEventListener('fullscreenchange', () => {
+      const fsEl = document.fullscreenElement;
+      if (fsEl === video) {
+        // Native video fullscreen — escape it and use our wrapper fullscreen instead
+        document.exitFullscreen().then(() => {
+          playerWrap.requestFullscreen && playerWrap.requestFullscreen();
+        }).catch(() => {});
+      }
+    });
 
     // ── Boot ──────────────────────────────────────────────────────────────
     connectWS();
