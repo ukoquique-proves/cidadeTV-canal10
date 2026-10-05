@@ -17,9 +17,10 @@ visitor ──https──▶ nginx (YunoHost, Let's Encrypt) ──▶ Reverse-P
 ```
 
 > **Status of this guide.** The domain / certificate / backup / permission steps are
-> the ones already used successfully for `new.kilombo.top`. The **Reverse-Proxy app**
-> (Step 5) has *not* been tried on this server yet: confirm it exists in your catalog
-> and read each prompt before answering. Steps marked ⚠ depend on it.
+> the ones already used successfully for `new.kilombo.top`. Two things have *not* been
+> tried on this server yet: the **free DynDNS domain** (Step 2) and the **Reverse-Proxy
+> app** (Step 5). Confirm each exists / is accepted, and read every prompt before
+> answering. Steps marked ⚠ depend on the Reverse-Proxy app.
 
 ---
 
@@ -36,27 +37,24 @@ visitor ──https──▶ nginx (YunoHost, Let's Encrypt) ──▶ Reverse-P
 
 ---
 
-## Step 0 — Choose the domain and point DNS at the server
+## Step 0 — The domain: free `cidade.ynh.fr` (YunoHost DynDNS)
 
-**`tv10.cidade` cannot work.** As far as I know `.cidade` is not a real top-level
-domain, so there is no public DNS for it and Let's Encrypt can never issue a
-certificate for it. Use **`tv10.cidade.top`** — this needs you to own (or register)
-`cidade.top`. This guide uses that name; replace it everywhere if you pick another.
-(`tv.kilombo.top` is deliberately not used.)
+The app will live at **`tv10.cidade.ynh.fr`**. `tv10.cidade` on its own is impossible
+(`.cidade` is not a real top-level domain, so it can have no public DNS and no
+certificate), and `tv10.cidade.ynh.fr` is the closest real equivalent. `tv.kilombo.top`
+is deliberately not used.
 
-Create a DNS record at wherever `cidade.top` is managed:
+How it works (YunoHost docs, "Nohost.me domains"):
 
-| Type | Name | Value |
-|---|---|---|
-| A | `tv10` | the server's public IPv4 |
-| AAAA | `tv10` | the server's IPv6, only if the server has one |
-
-A wildcard `*` record for `cidade.top` also works. After DNS propagates, on your
-own machine:
-
-```bash
-getent hosts tv10.cidade.top      # must print the server's IP
-```
+- YunoHost gives each server **one** free DynDNS domain (`.nohost.me`, `.noho.st` or
+  `.ynh.fr`). Names are first come, first served.
+- Subdomains of it are allowed: you add `tv10.cidade.ynh.fr` to YunoHost like any
+  other domain.
+- You create **no DNS records yourself**; the DynDNS service handles them.
+- This server must not already have a DynDNS domain (Step 1 checks). If it does, or
+  if `cidade` is taken, **stop and report the exact message** — then we pick another
+  name or fall back to a paid domain.
+- Never run `yunohost domain main-domain` for this: the main domain must stay as it is.
 
 ---
 
@@ -69,7 +67,8 @@ free -m | awk '/^Mem:/{print "RAM available MB:", $7}'
 df -m / | awk 'NR==2{print "disk free MB:", $4}'
 python3 --version                                 # needs 3.10+
 sudo apt install -y ffmpeg git python3-venv       # python3-venv: Debian needs it for venv
-getent hosts tv10.cidade.top                      # DNS resolves
+ls /etc/yunohost/dyndns /etc/cron.d/yunohost-dyndns 2>&1   # "No such file" = no DynDNS domain yet (good)
+sudo yunohost domain list                         # note the existing domains; do not touch them
 sudo yunohost app list                            # note what is installed; do not touch it
 sudo yunohost app search reverse                  # ⚠ find the Reverse Proxy app id
 ```
@@ -78,13 +77,34 @@ The Groq-only install is light (about 50 MB of dependencies, no local models).
 
 ---
 
-## Step 2 — Add the domain and the certificate
+## Step 2 — Register the DynDNS domain, add the subdomain, get the certificate
 
 ```bash
-sudo yunohost domain add tv10.cidade.top
+# one-time: register cidade.ynh.fr with the free DynDNS service
+sudo yunohost domain add cidade.ynh.fr
+sudo yunohost dyndns subscribe -d cidade.ynh.fr
+sudo yunohost dyndns update
+
+# the app's own subdomain
+sudo yunohost domain add tv10.cidade.ynh.fr
+sudo yunohost dyndns update
+```
+
+If `dyndns subscribe` is refused (name taken, or this server already has a DynDNS
+domain), stop and send me the exact message.
+
+Wait a few minutes, then from your own computer:
+
+```bash
+getent hosts tv10.cidade.ynh.fr          # must print the server's IP
+```
+
+Then, on the server:
+
+```bash
 sudo yunohost diagnosis run dnsrecords web
-sudo yunohost diagnosis show --issues             # fix anything about tv10.cidade.top first
-sudo yunohost domain cert install tv10.cidade.top # Let's Encrypt
+sudo yunohost diagnosis show --issues     # nothing about tv10.cidade.ynh.fr should remain
+sudo yunohost domain cert install tv10.cidade.ynh.fr    # Let's Encrypt
 ```
 
 ---
@@ -159,31 +179,11 @@ curl -s http://127.0.0.1:8000/health
 
 ## Step 5 — ⚠ Register the app in YunoHost (private at first)
 
-> **Three things have not been verified on this server yet. Read before you type.**
->
-> 1. **Is the Reverse-Proxy app in your catalog?**
->    `sudo yunohost app search reverse` (from Step 1) must return it. If it does not
->    appear, this step cannot proceed — stop and find the correct app id or an
->    alternative before continuing.
->
-> 2. **What does the app ask during install?**
->    The exact prompts are unknown. Read each one before answering. In particular:
->    if it asks who may access the app, choose the **private / admins-only** option —
->    do not make it public yet (Step 7 does that deliberately, after a backup).
->    After install, confirm with `yunohost user permission list` that visitors are
->    **not** listed — some apps add them automatically.
->
-> 3. **Does its nginx file include the WebSocket lines?**
->    Without `Upgrade`, `Connection "upgrade"`, and the timeout headers, captions
->    fail silently — the page loads but nothing ever arrives. The check below tells
->    you exactly what is missing. A later `yunohost app upgrade` may overwrite any
->    manual edits to this file, so re-check it after every upgrade of the proxy app.
-
 ```bash
 sudo yunohost app install <reverse-proxy-app-id>   # id from Step 1; interactive
 ```
 
-Answer the prompts: domain `tv10.cidade.top`, path `/`, destination = the local
+Answer the prompts: domain `tv10.cidade.ynh.fr`, path `/`, destination = the local
 port 8000 (read the prompt for the exact format it wants). If it asks who may access
 it, choose the private option, as was done for WordPress (`access=admins`).
 
@@ -192,7 +192,7 @@ Then note the app id YunoHost gave it and look at what was created:
 ```bash
 export APP_ID=<app id from: sudo yunohost app list>
 sudo yunohost user permission list | grep -A6 "$APP_ID.main"   # should NOT include visitors yet
-sudo cat /etc/nginx/conf.d/tv10.cidade.top.d/$APP_ID.conf
+sudo cat /etc/nginx/conf.d/tv10.cidade.ynh.fr.d/$APP_ID.conf
 ```
 
 **WebSocket check (captions travel over a WebSocket).** Inside the `location /` block
@@ -219,7 +219,7 @@ proxy app is upgraded, so re-check it after any `yunohost app upgrade`.
 Private check (the SSO login redirect is expected here):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.top/    # expect 302
+curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.ynh.fr/    # expect 302
 ```
 
 ---
@@ -248,17 +248,17 @@ sudo yunohost user permission add $APP_ID.main visitors
 ## Verify (from your own computer, not the server)
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.top/     # expect 200
-curl -s https://tv10.cidade.top/health                                # {"status":"ok",...}
-curl -s https://tv10.cidade.top/proxy/playlist | head -5              # #EXTM3U ...
+curl -s -o /dev/null -w '%{http_code}\n' https://tv10.cidade.ynh.fr/     # expect 200
+curl -s https://tv10.cidade.ynh.fr/health                                # {"status":"ok",...}
+curl -s https://tv10.cidade.ynh.fr/proxy/playlist | head -5              # #EXTM3U ...
 
 # WebSocket upgrade must answer HTTP/1.1 101
 curl -i -N -m 3 -H "Connection: Upgrade" -H "Upgrade: websocket" \
      -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
-     https://tv10.cidade.top/captions | head -3
+     https://tv10.cidade.ynh.fr/captions | head -3
 ```
 
-Then open `https://tv10.cidade.top` in a private browser window: the video should play
+Then open `https://tv10.cidade.ynh.fr` in a private browser window: the video should play
 and, once the channel is speaking, Portuguese captions appear (tick "Mostrar ES" for Spanish).
 
 ---
@@ -287,7 +287,7 @@ when its signed stream URLs stop working).
 ```bash
 sudo journalctl -u tvcidade10 -f                   # live logs (look for 429/401 from Groq)
 cd /opt/tvcidade10 && sudo -u tv10svc ./check_stream.sh   # is the TV stream itself up?
-curl -s https://tv10.cidade.top/health
+curl -s https://tv10.cidade.ynh.fr/health
 ```
 
 Run `check_stream.sh` as `tv10svc`: `.env` is private to that user, and otherwise the
@@ -300,7 +300,7 @@ script silently falls back to the default stream URL.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Public visitors land on the YunoHost login (302) | `visitors` permission not added | Step 7; check with `sudo yunohost user permission list` |
-| Certificate step fails | DNS not pointing at the server yet | `getent hosts tv10.cidade.top`; `sudo yunohost diagnosis run dnsrecords web` |
+| Certificate step fails | DNS not resolving yet | `sudo yunohost dyndns update`, wait, then `getent hosts tv10.cidade.ynh.fr` and `sudo yunohost diagnosis run dnsrecords web` |
 | 502 Bad Gateway | tv10 service is down, or wrong port in the proxy app | `sudo systemctl status tvcidade10`; destination must be port 8000 |
 | Page loads, captions never arrive | WebSocket headers missing in the nginx file | Step 5 WebSocket check; the `101` test above |
 | Page loads but no video | TV stream offline or URL changed | `check_stream.sh`; update `STREAM_URL` in `.env`, restart the service |
@@ -319,6 +319,9 @@ sudo yunohost app remove $APP_ID                             # remove only the p
 ```
 
 Restoring a backup: `sudo yunohost backup restore <archive name>`.
+
+Do not remove `cidade.ynh.fr` or its DynDNS registration casually: getting a name back
+after losing it needs a request on the YunoHost forum.
 
 ---
 
