@@ -30,7 +30,7 @@ This document outlines what is working, what's in progress, and what's left to d
 - **check_stream.sh** — Monitor when stream comes back online
 
 ### Deployment
-- **YunoHost on Debian** — Nginx reverse proxy, Let's Encrypt HTTPS, systemd auto-start/restart
+- **YunoHost on Debian** — YunoHost Reverse-Proxy app + Let's Encrypt HTTPS + systemd auto-start/restart + dedicated `tv10svc` user. Public access via `yunohost user permission add`. Step 5 (Reverse-Proxy install) not yet run on the target server.
 - **Local testing** — `test_hls/` folder with 60 s synthetic stream
 - **Groq integration** — Viewer-gated (zero API calls when no clients connected)
 - **Cota management** — ASR cap is generous (~14k req/day free tier); translation (`gpt-oss-20b`)
@@ -59,41 +59,27 @@ This requires:
 
 ---
 
-### YunoHost Portal Integration — SSO Bypass
-**Symptom:** The player is public; anyone can access it directly at `https://tv.yourdomain.com`.
+### YunoHost Deployment — Reverse-Proxy App Not Yet Tested
+**Current approach (YUNOHOST.md):** Use YunoHost's own Reverse-Proxy app instead of a
+hand-written nginx snippet. This registers the app with YunoHost's permission system
+(SSOwat), so:
+- Visitors are blocked behind the YunoHost login by default
+- Public access is granted explicitly: `yunohost user permission add <app>.main visitors`
+- The domain, certificate, and nginx config are all managed by YunoHost
 
-**Root cause:** The nginx snippet in Step 2 of YUNOHOST.md bypasses YunoHost's built-in
-SSO (Single Sign-On) authentication. YunoHost normally protects apps via a login gateway;
-this manual install skips that.
+**Status:** The domain/cert/systemd steps match what already works on `new.kilombo.top`.
+The Reverse-Proxy app install (Step 5 of YUNOHOST.md) has **not been run on this server
+yet**. Marked ⚠ in the guide.
 
-**Current behavior:** Public access is intentional — the stream is for viewers, not staff only.
-If you want to restrict access, use YunoHost's own mechanisms.
+**What to confirm before relying on it:**
+- Does `yunohost app search reverse` find the Reverse-Proxy app in the catalog?
+- Does the app's nginx config include WebSocket headers (`Upgrade`, `Connection`,
+  `proxy_read_timeout 3600s`)? If not, add them manually and note that a YunoHost
+  upgrade of the proxy app may overwrite the file.
+- Does `curl` to `/captions` return HTTP 101 after Step 5?
 
-**YunoHost integration options (not yet verified):**
-
-1. **YunoHost's "Redirect" app** — Has a proxy mode that can integrate a manually installed
-   app into the YunoHost portal while respecting SSO. This would:
-   - Protect the app behind YunoHost's login
-   - Make it available in the YunoHost dashboard
-   - Inherit YunoHost's LDAP/SAML auth if configured
-
-   **Status:** Mentioned in YunoHost docs, but details not verified. Requires testing:
-   - Does the proxy handle WebSocket correctly?
-   - Does it preserve the `Upgrade`/`Connection` headers?
-   - Does auth work with the Groq key in `.env`?
-
-2. **Direct YunoHost package** — Write a YunoHost app manifest (`.yunohost.yml`). This would
-   - Automate installation, updates, and uninstall
-   - Integrate HTTPS certificates, nginx, systemd, backups
-   - Allow YunoHost GUI installation (no SSH needed)
-   - Be much more reliable than manual steps
-
-   **Status:** Not done. High effort.
-
-**Recommendation for now:**
-- If the stream is public-facing, leave it as-is (no changes needed).
-- If you want SSO, read YunoHost's Redirect app docs first, then test the proxy mode.
-- If you want full YunoHost integration long-term, consider writing a package manifest.
+**Direct YunoHost package** — Writing a full `.yunohost.yml` manifest would automate
+installation, updates, backups, and SSO without any manual nginx edits. Not done; high effort.
 
 ---
 
@@ -155,7 +141,9 @@ If you want to restrict access, use YunoHost's own mechanisms.
 ## 📋 Quick Reference: What to Do Next
 
 **If you have users watching right now:**
-1. Monitor the stream daily with `./check_stream.sh` while deployed
+1. Monitor the stream daily — run as `tv10svc` so `.env` is readable and the correct
+   `STREAM_URL` is used (otherwise the script silently falls back to the default URL):
+   `sudo -u tv10svc /opt/tvcidade10/check_stream.sh`
 2. Watch Groq quota with `sudo journalctl -u tvcidade10 -f` (look for 429 errors)
 3. If translation quota hits limit, switch to local NLLB: `TRANSLATION_BACKEND=nllb` in `.env`
 
@@ -164,10 +152,10 @@ If you want to restrict access, use YunoHost's own mechanisms.
 2. iOS fullscreen fix (catch `webkitbeginfullscreen`, test on real device)
 3. Caption export (`.srt` download button)
 
-**If you want to integrate with YunoHost:**
-1. Read YunoHost Redirect app docs
-2. Test if proxy mode preserves WebSocket + Groq key
-3. If it works, document the steps; if not, consider a YunoHost package manifest
+**If you want to complete the YunoHost deployment:**
+1. Follow YUNOHOST.md Step 5 (Reverse-Proxy app install) — this is the untested part
+2. Verify WebSocket headers in the generated nginx config
+3. Run the `curl` WebSocket test from Step 5 before opening to the public
 
 **If you want to scale:**
 1. Containerize with Docker
@@ -194,7 +182,7 @@ If you want to restrict access, use YunoHost's own mechanisms.
 ## 📞 Known Issues to Report / Track
 
 1. **iPhone fullscreen** — Captions vanish (by design, iOS limitation)
-2. **YunoHost SSO** — Manual deploy bypasses YunoHost auth (by choice; verify Redirect app if needed)
+2. **YunoHost Reverse-Proxy app** — Step 5 of YUNOHOST.md not yet run on this server; WebSocket headers need manual verification after install
 3. **Groq quota management** — No built-in quota warning or auto-fallback (manual `.env` edit needed)
 4. **Whisper hallucinations** — Music/noise/overlapping speakers can cause false text (acceptable risk)
 5. **No speaker diarization** — Can't tell who's talking (low priority for news channel)
