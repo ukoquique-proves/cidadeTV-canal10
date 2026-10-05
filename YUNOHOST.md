@@ -58,22 +58,59 @@ How it works (YunoHost docs, "Nohost.me domains"):
 
 ---
 
+## Before you start — Know your YunoHost server
+
+Before deploying, you need to know:
+
+1. **How did you deploy kilombo-wp?** (the example in `/root/TVcidade10/YUNOHOST/`)
+   - SSH commands you followed manually?
+   - Deployment script?
+   - YunoHost package / app install?
+   - Other method?
+
+2. **What is the YunoHost server's hostname and domain?**
+   - The server runs both `new.kilombo.top` (WordPress) and will run `tv10.cidade.ynh.fr` (this app)
+   - To confirm: `hostname` and the existing domains (`yunohost domain list`)
+
+3. **Does the server already have a DynDNS domain registered?**
+   - If yes, what is it? (Only one free DynDNS domain per YunoHost server.)
+   - If no, `cidade.ynh.fr` can be registered in Step 2.
+
+4. **Is the Reverse-Proxy app available?**
+   - Result of: `yunohost app search reverse`
+   - Needed for Step 5.
+
+If you don't have these answers yet, **stop here and search the kilombo-wp documentation or your session history for the deployment pattern**. Once you have them, continue to Step 1.
+
+---
+
 ## Step 1 — Preflight (on the server)
 
 SSH in the same way as for kilombo-wp (key authentication, non-default port).
 
 ```bash
+hostname
+yunohost domain list
+yunohost app list
+yunohost app search reverse
+
+# System checks
 free -m | awk '/^Mem:/{print "RAM available MB:", $7}'
 df -m / | awk 'NR==2{print "disk free MB:", $4}'
 python3 --version                                 # needs 3.10+
 sudo apt install -y ffmpeg git python3-venv       # python3-venv: Debian needs it for venv
-ls /etc/yunohost/dyndns /etc/cron.d/yunohost-dyndns 2>&1   # "No such file" = no DynDNS domain yet (good)
-sudo yunohost domain list                         # note the existing domains; do not touch them
-sudo yunohost app list                            # note what is installed; do not touch it
-sudo yunohost app search reverse                  # ⚠ find the Reverse Proxy app id
+
+# DynDNS status
+ls /etc/yunohost/dyndns /etc/cron.d/yunohost-dyndns 2>&1   # "No such file" = no DynDNS domain yet
 ```
 
 The Groq-only install is light (about 50 MB of dependencies, no local models).
+
+**What to record:**
+- Hostname and existing domains (don't touch them)
+- Whether DynDNS is already registered (ls output)
+- Reverse-Proxy app id (from search result)
+- RAM and disk available
 
 ---
 
