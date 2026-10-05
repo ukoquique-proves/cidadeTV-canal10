@@ -395,17 +395,38 @@
         hlsStatus.textContent = 'ao vivo';
       });
 
+      // hls.js (XHR loader) reports a failed request as:
+      //   data.response       = { code: <HTTP status>, text: <status text>, ... }
+      //   data.networkDetails = the XMLHttpRequest (body in .responseText / .response)
+      function httpStatus(data) {
+        if (data.response && Number.isFinite(data.response.code)) return data.response.code;
+        const nd = data.networkDetails;
+        return nd && Number.isFinite(nd.status) ? nd.status : 0;
+      }
+      function responseBody(data) {
+        const nd = data.networkDetails;
+        if (!nd) return '';
+        try { if (typeof nd.responseText === 'string') return nd.responseText; } catch (e) {}
+        return typeof nd.response === 'string' ? nd.response : '';
+      }
+
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         hlsFailed = true;
         hlsDot.className = 'dot red';
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          // 503 = proxy got 404 from upstream (stream offline); keep retrying.
-          const is404 = data.networkDetails && data.networkDetails.response &&
-                        data.networkDetails.response.status === 503 &&
-                        data.networkDetails.response.responseText &&
-                        data.networkDetails.response.responseText.startsWith('Stream offline');
-          if (is404) {
+          const status = httpStatus(data);
+          // 503 + "Stream offline" = the proxy got a 404 from upstream; keep retrying.
+          const offline = status === 503 && responseBody(data).startsWith('Stream offline');
+          if (status === 403) {
+            // Signed segment/playlist URLs die when the server restarts (new HMAC secret).
+            // Re-request /proxy/playlist for fresh signatures instead of retrying dead URLs.
+            hlsStatus.textContent = 'sessão expirada — reconectando…';
+            $('offline-banner').classList.remove('show');
+            setTimeout(initHLS, 1000);
+            return;
+          }
+          if (offline) {
             hlsStatus.textContent = 'Stream offline — tentando de novo…';
             $('offline-banner').classList.add('show');
           } else {
@@ -514,9 +535,9 @@
       const fsEl = document.fullscreenElement;
       if (fsEl === video) {
         // Native video fullscreen — escape it and use our wrapper fullscreen instead
-        document.exitFullscreen().then(() => {
-          playerWrap.requestFullscreen && playerWrap.requestFullscreen();
-        }).catch(() => {});
+        document.exitFullscreen()
+          .then(() => playerWrap.requestFullscreen())
+          .catch(() => playerWrap.classList.add('pseudo-fs'));
       }
     });
 

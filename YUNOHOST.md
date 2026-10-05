@@ -94,7 +94,8 @@ Paste (adjust `User` and paths if needed):
 ```ini
 [Unit]
 Description=TV Cidade 10 Live Subtitles
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -138,23 +139,22 @@ After this, `https://tv.yourdomain.com` should serve the player with a valid HTT
 
 ---
 
-## Step 5 — Update .env for public access
+## Step 5 — Check .env for public access
 
-Edit `/opt/tvcidade10/.env`:
-
-```bash
-nano /opt/tvcidade10/.env
-```
-
-Change:
+Edit `/opt/tvcidade10/.env` and make sure these are set (they are the defaults):
 
 ```dotenv
-HOST=127.0.0.1    # keep this — nginx proxies from outside, app only binds locally
-PORT=8000
+HOST=127.0.0.1    # nginx proxies from outside; the app only binds locally
+PORT=8000         # must match proxy_pass in Step 2
 ```
 
 The app does NOT need `HOST=0.0.0.0` when nginx is proxying — binding to localhost
 is safer (the app is not directly exposed to the internet).
+
+If the channel's playlist or segments are served from a different host than
+`STREAM_URL`, add it to `PROXY_ALLOWED_HOSTS` (e.g. `.logicahost.com.br`); otherwise
+the proxy answers 403 "Host not allowed" for those requests. After editing `.env`:
+`sudo systemctl restart tvcidade10`.
 
 ---
 
@@ -216,7 +216,7 @@ curl -s https://tv.yourdomain.com/health
 | Page loads but no video | Stream offline or URL changed | Run `./check_stream.sh`; update `STREAM_URL` in `.env` |
 | Captions never appear | WebSocket not upgrading | Check nginx config has `Upgrade`/`Connection` headers |
 | 502 Bad Gateway | App not running | `sudo systemctl status tvcidade10` |
-| 403 on `/proxy/segment` | HMAC signature mismatch (app restarted mid-session) | Reload the page — new session gets fresh signatures |
+| 403 on `/proxy/segment` | HMAC signature mismatch (app restarted mid-session) | The page rebuilds the player by itself within ~1 s; if it does not, reload. A 403 "Host not allowed" instead means the host is missing from `PROXY_ALLOWED_HOSTS` |
 | Spanish captions blank | Groq quota hit or key invalid | Check `sudo journalctl -u tvcidade10` for 429/401 errors |
 | App doesn't restart after reboot | systemd unit not enabled | `sudo systemctl enable tvcidade10` |
 

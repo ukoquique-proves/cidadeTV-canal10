@@ -5,6 +5,45 @@ Most recent entry first.
 
 ---
 
+## 2026-10-05 — Startup verification + audit patch applied
+
+### Notes
+- Verified the repository’s supported startup path via `./start.sh`; the app starts
+  successfully and streams live captions from the upstream TV signal.
+- Corrected the earlier mistaken claim that the app was unable to run; the issue was
+  the startup method, not the project itself.
+- Applied the audit patch and recorded the related fixes in this changelog.
+
+---
+
+## 2026-10-05 — Audit: offline banner, stale signatures, housekeeping
+
+### Bugs fixed
+- **Offline banner never showed.** The page read `networkDetails.response.status`, but
+  hls.js's XHR loader puts the HTTP status in `data.response.code` and the body in
+  `networkDetails.responseText` (`networkDetails.response` is the body *string*, so
+  `.status` was `undefined`). Both are now read from the real locations. The old page
+  test used a hand-made event shape that matched the bug, so it never caught this;
+  tests 9–10 in `tests/page.test.js` use the real shape.
+- **Dead player after a server restart.** Signed proxy URLs use a per-process HMAC
+  secret, so every open tab got 403s forever after `systemctl restart`. A 403 now
+  rebuilds the player (fresh `/proxy/playlist`) instead of retrying dead URLs.
+- **Fullscreen fallback:** the `fullscreenchange` handler's inner `requestFullscreen()`
+  rejection was unhandled; it now falls back to CSS fullscreen.
+- **`check_stream.sh`** had the stream URL hard-coded and ignored `STREAM_URL` in `.env`
+  (YUNOHOST.md tells you to change it there). It now reads env → `.env` → default, and
+  has a curl timeout.
+
+### Housekeeping
+- `.env.example`: removed the GitHub token/repository placeholders (unused by the app,
+  but `start.sh` copies this file to `.env` on every server).
+- Removed the tracked `.DirIcon` (stray 96×96 PNG) and the stale `capture.py.backup`.
+- `package.json` is now tracked (page tests need `jsdom`).
+- YUNOHOST.md: Step 5 no longer says "Change:" for values that are already the defaults;
+  mentions `PROXY_ALLOWED_HOSTS`; unit waits for `network-online.target`.
+
+---
+
 ## 2026-10-04 — Prominent stream offline indication + monitoring
 
 ### Problem

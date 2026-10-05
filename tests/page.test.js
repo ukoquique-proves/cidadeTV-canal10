@@ -91,5 +91,27 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   assert.strictEqual(d.getElementById('hls-status').textContent, 'ao vivo');
   h.handlers['f']();                                       // later fragments must not rewrite status
   console.log('ok   stream dot recovers');
+
+  // 9) stream offline: payload shaped like the REAL hls.js XHR loader
+  //    (response.code = status, networkDetails = XMLHttpRequest with the body)
+  const h2 = hlsInstances[hlsInstances.length - 1];
+  const banner = d.getElementById('offline-banner');
+  h2.handlers['e']({}, { fatal: true, type: 'n', response: { code: 503, text: 'Service Unavailable' },
+                         networkDetails: { status: 503, responseText: 'Stream offline', response: 'Stream offline' } });
+  assert.ok(banner.classList.contains('show'), 'offline banner not shown for a real-shaped 503');
+  assert.ok(/offline/i.test(d.getElementById('hls-status').textContent));
+  // a different network error (e.g. 502) hides it again
+  h2.handlers['e']({}, { fatal: true, type: 'n', response: { code: 502, text: 'Bad Gateway' },
+                         networkDetails: { status: 502, responseText: 'Bad Gateway', response: 'Bad Gateway' } });
+  assert.ok(!banner.classList.contains('show'), 'banner lingered after a non-offline error');
+  console.log('ok   offline banner shows/hides with real hls.js error shape');
+
+  // 10) 403 (server restarted -> old HMAC signatures) must rebuild the player, not retry dead URLs
+  const nBefore = hlsInstances.length;
+  h2.handlers['e']({}, { fatal: true, type: 'n', response: { code: 403, text: 'Forbidden' },
+                         networkDetails: { status: 403, responseText: 'Bad signature' } });
+  await sleep(1300);
+  assert.strictEqual(hlsInstances.length, nBefore + 1, 'player was not re-created after 403');
+  console.log('ok   403 re-creates the player (fresh signatures)');
   w.close(); process.exit(0);
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
