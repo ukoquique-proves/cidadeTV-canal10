@@ -168,14 +168,23 @@ installation, updates, backups, and SSO without any manual nginx edits. Not done
 ## 🧪 Testing Checklist Before Wider Deployment
 
 - [ ] Stream stays up for 24+ hours without restarts (`systemctl status tvcidade10`)
+      — needs a continuous production run; not yet observed
 - [ ] Groq quota does not hit limit on a typical day of viewing
-- [ ] Captions are synchronized within 10–15 s and readable at TV distance
+      — needs a full day of real viewers; not yet observed
+- [x] Captions are synchronized within 10–15 s and readable at TV distance
+      — latency measured in session; font size increased 30%; confirmed working
 - [ ] Fullscreen works on Chrome, Firefox, Safari (desktop)
-- [ ] Fullscreen on iOS Safari noted as limitation (captions vanish — acceptable for now?)
-- [ ] WebSocket reconnects if server restarts mid-stream
-- [ ] Offline banner appears when stream goes down (and disappears when it comes back)
+      — fix implemented and page-tested; only one browser confirmed manually
+- [x] Fullscreen on iOS Safari noted as limitation (captions vanish — acceptable for now?)
+      — documented in ROADMAP.md and CHANGELOG.md; no fix planned short-term
+- [x] WebSocket reconnects if server restarts mid-stream
+      — 403 player-rebuild fix implemented and covered by page tests
+- [x] Offline banner appears when stream goes down (and disappears when it comes back)
+      — fixed (correct `data.response.code` path); covered by page tests 9–10
 - [ ] Translation works correctly (PT → ES) with real speech (not synthetic)
-- [ ] Viewer-gated ASR works: open player tab → ASR starts; close all tabs → ASR stops
+      — worked during live session; no extended real-world run logged yet
+- [x] Viewer-gated ASR works: open player tab → ASR starts; close all tabs → ASR stops
+      — implemented and unit-tested
 
 ---
 
