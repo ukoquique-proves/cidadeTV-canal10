@@ -155,6 +155,87 @@ pip install silero-vad   # puxa torch (~800 MB) mas melhora muito a segmentaçã
 | `requirements.local.txt` | torch + faster-whisper + NLLB + Silero | ~800 MB |
 | `requirements.txt` | Tudo (inclui os dois arquivos acima) | ~850 MB |
 
+## Correção de outage de legendas (FossaPup)
+
+**Status:** ✅ Corrigido e testado. Branch de backup: `fossapup-backup-20261012`
+
+### Problema
+
+Em 12 de outubro de 2026, as legendas pararam de aparecer por ~120 s quando a cota Groq foi excedida.
+**Causa raiz:** quando `faster-whisper` não estava instalado, o erro de import era capturado silenciosamente,
+retornando um array vazio sem aviso — sem logging, sem fallback explícito, sem recuperação. O usuário
+ficava sem legendas durante o cooldown de 429 da Groq, sem saber por quê.
+
+**Ambiente:** FossaPup (Puppy Linux, Ubuntu 20.04 base), Python 3.8.10, i7-4600U (CPU-only), 7.8 GB RAM.
+
+### Solução
+
+Três commits aplicados ao branch `fossapup-backup-20261012`:
+
+#### 1. **37ff63d** — Loud fallback logging + faster-whisper py3.8 + auto-sync hysteresis
+
+- **Loud fallback:** Erro **ERROR** (primeira falha) → **WARNING** (subsequentes) com contador de tentativas
+  e relatório de recuperação.
+- **faster-whisper 0.10.1 + ctranslate2 3.24.0** instalados com flag `--no-deps` para Python 3.8
+  (não há builds pre-compiladas de ctranslate2 para py3.8 official, mas 3.24.0 funciona).
+- **Stub de audio.py:** _ensure_av_stub() busca libavcodec em caminhos comuns (FossaPup não tem dev headers).
+- **Auto-sync hysteresis:** server.py `_AgeClock` com threshold 5s + cooldown 180s + clamp 4–40s previne
+  re-inicialização rápida por jitter de latência.
+- **Browser:** threshold auto-sync aumentado 2s → 5s, initHLS() só se age_clock diff ≥ 10s.
+- **9 testes novos:** fallback, _AgeClock hysteresis, isolamento de viewer-gate.
+
+**Medição de velocidade (i7-4600U, int8):**
+```
+tiny:  0.76 s (1s áudio) → RTF 0.25–0.76× ✓ realtime
+small: 5.22 s (1s áudio) → RTF 2.5–5× ✗ demasiado lento (pipeline mais lento que RT)
+```
+
+#### 2. **bf274b0** — Post-review: fix requirements markers + av stub + tiny default
+
+- **requirements.groq.txt:** markers de Python (`python_version >= "3.9"` / `< "3.9"`)
+  para gates de pacotes — py3.8 recebe `faster-whisper==0.10.1`, py3.9+ recebe `==1.1.0`.
+- **_ensure_av_stub() reproduzível:** teste verifica que a stub funciona ou levanta erro claro.
+- **Modelo `tiny` por padrão:** `.env.example` e padrão em `_resolve_config()` — troca de `small`
+  por `tiny` porque `small` era demasiado lento no CPU para live streaming.
+- **CHANGELOG.md:** tabela de velocidade, 3 correções documentadas.
+
+#### 3. **f0d03da** — FossaPup baseline: translation off by default + quota fail-fast + py3.8 compat
+
+- **Tradução desabilitada por padrão:** `.env.example` `ENABLE_TRANSLATION=false` (economiza cota Groq).
+- **`GROQ_MAX_RETRIES=0` padrão:** fail-fast em 429 vs. esperar 44s e travar pipeline.
+- **Python 3.8 compat:** `from __future__ import annotations` em todos os módulos.
+- **Limpeza:** pnpm-lock.yaml removido, get-pip.py movido para `.gitignore`.
+
+### Verificação
+
+```bash
+# Stub de audio.py funciona
+python3 -c "import transcribe; transcribe._ensure_av_stub(); \
+  from faster_whisper import WhisperModel; print('OK')"
+
+# Testes (50 Python + 17 JS, todos passam)
+python3 -m pytest tests/ -q
+node tests/captions.test.js
+node tests/page.test.js
+
+# Verificar markers (py3.8 salta faster-whisper 1.1.0)
+python3 -m pip install --dry-run -r requirements.groq.txt
+```
+
+### Push para GitHub
+
+Todos os 3 commits foram enviados com sucesso para `fossapup-backup-20261012`:
+
+```bash
+git push -u origin fossapup-backup-20261012
+# Branch 'fossapup-backup-20261012' set up to track remote branch
+# Todos os 3 commits agora em https://github.com/ukoquique-proves/cidadeTV-canal10
+```
+
+**Pull request:** https://github.com/ukoquique-proves/cidadeTV-canal10/pull/new/fossapup-backup-20261012
+
+---
+
 ## Configuração (`.env` — veja `.env.example`)
 
 ### Sobre `.env` e GitHub
