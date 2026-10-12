@@ -8,6 +8,7 @@ main.py — Entry point for the TV Cidade 10 live subtitle system.
 
 Settings come from the environment / .env (see .env.example).
 """
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -137,7 +138,7 @@ def build_pipeline(args: argparse.Namespace) -> list[asyncio.Task]:
 
     # Translation line reflects what will actually run (ENABLE_TRANSLATION and
     # TRANSLATION_BACKEND are honored with or without a Groq key).
-    if os.environ.get("ENABLE_TRANSLATION", "true").lower() != "true":
+    if os.environ.get("ENABLE_TRANSLATION", "false").lower() != "true":
         logger.info("Translation   : disabled (PT only)")
     elif _active_backend() == "groq":
         logger.info("Translation   : Groq LLM (%s) ✓",
@@ -164,7 +165,7 @@ def build_pipeline(args: argparse.Namespace) -> list[asyncio.Task]:
         start_capture(pcm_queue, stream_url=stream, chunk_ms=100),
         VadSegmenter(pcm_queue, segment_queue).start(),
         Transcriber(segment_queue, transcript_queue,
-                    has_viewers=lambda: _manager.count > 0).start(),
+                    has_viewers=lambda: True if args.capture_only else _manager.count > 0).start(),
         Translator(transcript_queue, caption_queue).start(),
     ]
     out = _print_captions if args.capture_only else _push_captions

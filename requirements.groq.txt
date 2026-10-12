@@ -10,3 +10,29 @@ httpx==0.27.2               # async HTTP client for the HLS proxy
 
 python-dotenv==1.0.1        # loads .env into os.environ
 numpy>=1.24                 # audio array handling
+
+# ── Local ASR fallback (faster-whisper) ──────────────────────────────────────
+#
+# Python >= 3.9 (TrixiePup / standard install):
+#   pip install -r requirements.groq.txt works as-is.
+faster-whisper==1.1.0; python_version >= "3.9"
+
+# Python 3.8 (FossaPup):
+#   faster-whisper 1.x requires ctranslate2 >=4.0 (no py3.8 wheel).
+#   faster-whisper 0.10.x requires av==10.* (no py3.8 wheel; can't build without
+#   libavcodec dev headers).  Plain "pip install -r" therefore CANNOT install the
+#   fallback on Python 3.8.  Use the manual steps below instead.
+#
+#   MANUAL INSTALL (run once after cloning on FossaPup):
+#
+#     pip install --no-deps faster-whisper==0.10.1
+#     pip install "ctranslate2==3.24.0" "huggingface-hub>=0.13" \
+#                 "tokenizers>=0.13,<0.16" "onnxruntime>=1.14,<2"
+#
+#   Then apply the av stub so the package loads without av being installed
+#   (transcribe.py's _ensure_av_stub() does this automatically on first import).
+#   See CHANGELOG.md "2026-10-12 — AGENTS.md plan applied" for details.
+#
+# The line below is intentionally commented out for Python 3.8:
+# faster-whisper==0.10.1; python_version < "3.9"
+# ctranslate2==3.24.0; python_version < "3.9"

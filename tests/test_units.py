@@ -360,6 +360,82 @@ def test_fast_overrides_env_but_model_flag_wins(monkeypatch):
     assert os.environ["WHISPER_MODEL"] == "medium"
 
 
+# ── server.py: _AgeClock auto-sync hysteresis ────────────────────────────────
+
+def test_age_clock_first_suggestion_emits_immediately():
+    import server
+    clock = server._AgeClock(min_samples=3)
+    for v in [20.0, 22.0, 24.0]:
+        clock.record(v)
+    s = clock.suggested_sync
+    assert s is not None and 10 <= s <= 40
+
+
+def test_age_clock_clamps_to_ui_range():
+    import server
+    clock = server._AgeClock(min_samples=3)
+    # Very high latency — must not exceed 40 (the UI max)
+    for v in [80.0, 85.0, 90.0]:
+        clock.record(v)
+    assert clock.suggested_sync == 40.0
+    # Very low latency — must not go below 10 (HLS floor)
+    clock2 = server._AgeClock(min_samples=3)
+    for v in [1.0, 1.5, 2.0]:
+        clock2.record(v)
+    assert clock2.suggested_sync == 10.0
+
+
+def test_age_clock_hysteresis_suppresses_small_changes(monkeypatch):
+    import server
+    # Freeze time so cooldown doesn't interfere
+    monkeypatch.setattr(server, "_now", lambda: 0.0)
+    clock = server._AgeClock(min_samples=3)
+    for v in [20.0, 22.0, 24.0]:
+        clock.record(v)
+    first = clock.suggested_sync      # emits immediately
+    assert first is not None
+
+    # Add values that would shift the suggestion by < 5 s
+    for v in [21.0, 23.0, 25.0]:
+        clock.record(v)
+    second = clock.suggested_sync
+    assert second == first, "Small shift (<5 s) must not change the emitted value"
+
+
+def test_age_clock_hysteresis_allows_large_changes(monkeypatch):
+    import server, time as _time
+    # First emission at t=0
+    monkeypatch.setattr(server, "_now", lambda: 0.0)
+    clock = server._AgeClock(min_samples=3)
+    for v in [15.0, 16.0, 17.0]:
+        clock.record(v)
+    first = clock.suggested_sync
+    assert first is not None
+
+    # Advance time past cooldown, and shift latency significantly
+    monkeypatch.setattr(server, "_now", lambda: server._AgeClock._COOLDOWN_S + 1.0)
+    for _ in range(20):
+        clock.record(35.0)  # big jump in latency
+    second = clock.suggested_sync
+    assert second != first, "Large shift after cooldown must update the suggestion"
+    assert abs(second - first) >= server._AgeClock._HYSTERESIS_S
+
+
+def test_age_clock_cooldown_blocks_change_before_interval(monkeypatch):
+    import server
+    monkeypatch.setattr(server, "_now", lambda: 0.0)
+    clock = server._AgeClock(min_samples=3)
+    for v in [15.0, 16.0, 17.0]:
+        clock.record(v)
+    first = clock.suggested_sync
+
+    # Big shift but cooldown not elapsed
+    monkeypatch.setattr(server, "_now", lambda: 1.0)  # only 1 s later
+    for _ in range(20):
+        clock.record(35.0)
+    assert clock.suggested_sync == first, "Change must be suppressed within cooldown window"
+
+
 # ── server.py: slow WebSocket clients ────────────────────────────────────────
 
 class _FakeWS:
@@ -436,7 +512,7 @@ def test_groq_client_is_reused_and_configured(monkeypatch):
     monkeypatch.delenv("GROQ_MAX_RETRIES", raising=False)
     a, b = groq_client.get_client(), groq_client.get_client()
     assert a is b and len(created) == 1                     # one client, not one per request
-    assert created[0] == {"api_key": "k1", "timeout": 8.0, "max_retries": 1}
+    assert created[0] == {"api_key": "k1", "timeout": 8.0, "max_retries": 0}
     monkeypatch.setenv("GROQ_TIMEOUT_S", "3")
     assert groq_client.get_client() is not a and created[-1]["timeout"] == 3.0
     monkeypatch.setenv("GROQ_TIMEOUT_S", "garbage")          # bad value -> default, no crash
@@ -523,36 +599,25 @@ def test_transcriber_skips_asr_when_no_viewers(monkeypatch):
     # Transcriber._run preloads the local Whisper model when GROQ_API_KEY is unset;
     # these tests only exercise the viewer gate, so don't require faster-whisper.
     monkeypatch.setattr(transcribe, "_load_model", lambda: None)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
     asr_calls = []
+    monkeypatch.setattr(transcribe, "_transcribe_segment",
+                        lambda pcm: (asr_calls.append(len(pcm)) or []))
 
     async def _run():
         inq: asyncio.Queue = asyncio.Queue()
         outq: asyncio.Queue = asyncio.Queue()
-
-        # Stub: record every ASR call, return empty
-        import transcribe
-        orig = transcribe._transcribe_segment
-        transcribe._transcribe_segment = lambda pcm: (asr_calls.append(len(pcm)) or [])
-
+        t = Transcriber(inq, outq, has_viewers=lambda: False)
+        task = t.start()
+        for _ in range(3):
+            await inq.put((b"\x00" * 16000, 0.0, 0.0))
+        await asyncio.sleep(0.05)
+        task.cancel()
         try:
-            t = Transcriber(inq, outq, has_viewers=lambda: False)
-            task = t.start()
-
-            # Feed three segments
-            for _ in range(3):
-                await inq.put((b"\x00" * 16000, 0.0, 0.0))
-
-            # Give the task a moment to consume them
-            await asyncio.sleep(0.05)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        finally:
-            transcribe._transcribe_segment = orig
-
+            await task
+        except asyncio.CancelledError:
+            pass
         return outq.qsize()
 
     out_items = asyncio.run(_run())
@@ -567,42 +632,36 @@ def test_transcriber_resumes_asr_when_viewer_connects(monkeypatch):
     # Transcriber._run preloads the local Whisper model when GROQ_API_KEY is unset;
     # these tests only exercise the viewer gate, so don't require faster-whisper.
     monkeypatch.setattr(transcribe, "_load_model", lambda: None)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
     asr_calls = []
     viewer_flag = [False]  # mutable so the lambda sees updates
 
+    monkeypatch.setattr(transcribe, "_transcribe_segment",
+                        lambda pcm: (asr_calls.append(len(pcm)) or
+                                     [{"text": "ok", "start": 0.0, "end": 0.5}]))
+
     async def _run():
         inq: asyncio.Queue = asyncio.Queue()
         outq: asyncio.Queue = asyncio.Queue()
+        t = Transcriber(inq, outq, has_viewers=lambda: viewer_flag[0])
+        task = t.start()
 
-        import transcribe
-        orig = transcribe._transcribe_segment
-        transcribe._transcribe_segment = lambda pcm: (
-            asr_calls.append(len(pcm)) or [{"text": "ok", "start": 0.0, "end": 0.5}]
-        )
+        # First segment — no viewer
+        await inq.put((b"\x00" * 16000, 0.0, 0.0))
+        await asyncio.sleep(0.05)
+        assert asr_calls == [], "should skip with no viewer"
 
+        # Second segment — viewer arrives
+        viewer_flag[0] = True
+        await inq.put((b"\x00" * 16000, 1.0, 0.0))
+        await asyncio.sleep(0.05)
+
+        task.cancel()
         try:
-            t = Transcriber(inq, outq, has_viewers=lambda: viewer_flag[0])
-            task = t.start()
-
-            # First segment — no viewer
-            await inq.put((b"\x00" * 16000, 0.0, 0.0))
-            await asyncio.sleep(0.05)
-            assert asr_calls == [], "should skip with no viewer"
-
-            # Second segment — viewer arrives
-            viewer_flag[0] = True
-            await inq.put((b"\x00" * 16000, 1.0, 0.0))
-            await asyncio.sleep(0.05)
-
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        finally:
-            transcribe._transcribe_segment = orig
-
+            await task
+        except asyncio.CancelledError:
+            pass
         return outq.qsize()
 
     out_items = asyncio.run(_run())
@@ -644,3 +703,124 @@ def test_groq_call_kwargs_are_accepted_by_installed_sdk(monkeypatch):
         translate._translate_groq_sync("olá")
         unknown = set(seen) - set(params)
         assert not unknown, f"GROQ_REASONING_EFFORT={effort}: SDK would reject {unknown}"
+
+
+# ── Groq → local faster-whisper fallback ─────────────────────────────────────
+
+class _FakeRateLimit(Exception):
+    def __init__(self, msg, retry_after=None):
+        super().__init__(msg)
+        self.status_code = 429
+        if retry_after is not None:
+            self.response = type("R", (), {"headers": {"retry-after": str(retry_after)}})()
+
+
+def _fallback_setup(monkeypatch, groq_exc, local_exc=None):
+    import transcribe
+    calls = {"groq": 0, "local": 0}
+
+    def groq(_pcm):
+        calls["groq"] += 1
+        if groq_exc is not None:
+            raise groq_exc
+        return [{"text": "g", "start": 0, "end": 1}]
+
+    def local(_pcm):
+        calls["local"] += 1
+        if local_exc is not None:
+            raise local_exc
+        return [{"text": "l", "start": 0, "end": 1}]
+
+    monkeypatch.setattr(transcribe, "_transcribe_segment_groq", groq)
+    monkeypatch.setattr(transcribe, "_transcribe_segment_local", local)
+    monkeypatch.setattr(transcribe, "_groq_blocked_until", 0.0)
+    monkeypatch.setattr(transcribe, "_fallback_skipped", 0)
+    monkeypatch.setattr(transcribe, "_fallback_error_logged", False)
+    return transcribe, calls
+
+
+def test_fallback_triggers_on_hourly_audio_seconds_429(monkeypatch):
+    # the hourly audio cap never mentions "requests per day"
+    exc = _FakeRateLimit("Rate limit reached ... on seconds of audio per hour (ASH)", 600)
+    tr, calls = _fallback_setup(monkeypatch, exc)
+    assert tr._transcribe_with_fallback(b"x")[0]["text"] == "l"
+    # cooldown honours Retry-After: next segments skip Groq entirely
+    assert tr._transcribe_with_fallback(b"x")[0]["text"] == "l"
+    assert calls == {"groq": 1, "local": 2}
+
+
+def test_fallback_default_cooldown_without_retry_after(monkeypatch):
+    tr, _ = _fallback_setup(monkeypatch, _FakeRateLimit("429"))
+    import time
+    before = time.time()
+    tr._transcribe_with_fallback(b"x")
+    assert 100 < tr._groq_blocked_until - before <= 125
+
+
+def test_non_rate_limit_error_still_raises(monkeypatch):
+    tr, calls = _fallback_setup(monkeypatch, TimeoutError("timed out"))
+    with pytest.raises(TimeoutError):
+        tr._transcribe_with_fallback(b"x")
+    assert calls["local"] == 0
+
+
+def test_fallback_import_error_returns_empty_and_logs_error(monkeypatch, caplog):
+    """When faster-whisper is not installed, the function must return []
+    and log at ERROR level (not just WARNING) on the first failure."""
+    import logging
+    rate_exc = _FakeRateLimit("429 quota")
+    local_exc = ImportError("No module named 'faster_whisper'")
+    tr, calls = _fallback_setup(monkeypatch, rate_exc, local_exc=local_exc)
+
+    with caplog.at_level(logging.ERROR, logger="transcribe"):
+        result = tr._transcribe_with_fallback(b"x")
+
+    assert result == [], "must return empty list, not raise"
+    assert calls == {"groq": 1, "local": 1}
+    assert any("faster-whisper not installed" in r.message for r in caplog.records
+               if r.levelno >= logging.ERROR), \
+        "must log an ERROR mentioning 'faster-whisper not installed'"
+    assert tr._fallback_skipped == 1
+    assert tr._fallback_error_logged is True
+
+
+def test_fallback_import_error_logs_only_once_then_warns(monkeypatch, caplog):
+    """Subsequent failures during the same cooldown log at WARNING, not ERROR."""
+    import logging
+    rate_exc = _FakeRateLimit("429 quota")
+    local_exc = ImportError("No module named 'faster_whisper'")
+    tr, calls = _fallback_setup(monkeypatch, rate_exc, local_exc=local_exc)
+
+    # First call: triggers cooldown + logs ERROR
+    with caplog.at_level(logging.WARNING, logger="transcribe"):
+        tr._transcribe_with_fallback(b"x")
+
+    caplog.clear()
+
+    # Second call: still in cooldown, local still fails — should be WARNING only
+    with caplog.at_level(logging.WARNING, logger="transcribe"):
+        result = tr._transcribe_with_fallback(b"x")
+
+    assert result == []
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert not errors, f"second failure should not log ERROR again; got: {errors}"
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "second failure should still log a WARNING"
+    assert tr._fallback_skipped == 2
+
+
+def test_fallback_groq_recovers_after_cooldown(monkeypatch):
+    """After the cooldown expires, _transcribe_with_fallback retries Groq
+    and resets the skip counter on success."""
+    import time
+    tr, calls = _fallback_setup(monkeypatch, None)  # Groq succeeds on first call
+
+    # Simulate being mid-cooldown that has expired
+    tr._groq_blocked_until = time.time() - 1.0   # expired 1 s ago
+    tr._fallback_skipped = 5
+    tr._fallback_error_logged = True
+
+    result = tr._transcribe_with_fallback(b"x")
+    assert result[0]["text"] == "g"
+    assert tr._fallback_skipped == 0
+    assert tr._fallback_error_logged is False

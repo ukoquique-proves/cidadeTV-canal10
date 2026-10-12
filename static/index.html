@@ -268,13 +268,21 @@
     // delay is what gives speech recognition + translation time to finish.
     // Each caption says how long ago its speech started at the live edge
     // (age_start); we show it after (player latency − age_start) seconds.
+    //
+    // AUTO-SYNC: the server measures real caption latency and sends
+    // `suggested_sync` on every caption.  If the user has not manually set a
+    // delay this session (manualSync=false), the player is reinitialised
+    // whenever the suggestion differs from the current value by ≥2 s.
     const params = new URLSearchParams(location.search);
     const CONFIG = {
       hlsSrc: '/proxy/playlist',
       wsUrl: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/captions`,
-      liveSyncDuration: parseFloat(params.get('sync') || load('syncDuration', '10')) || 10,
+      liveSyncDuration: parseFloat(params.get('sync') || load('syncDuration', '35')) || 35,
       captionOffset: parseFloat(load('captionOffset', '0')) || 0,   // + = later
     };
+    // Track whether the user has touched the delay control this session.
+    // If not, auto-sync is allowed to adjust it.
+    let manualSync = false;
 
     // ── DOM refs ──────────────────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
@@ -341,6 +349,35 @@
         try { data = JSON.parse(evt.data); } catch (e) { return; }
         if (data.ping) return;
         scheduler.push(data, performance.now(), playerLatency(), CONFIG.captionOffset);
+
+        // ── Auto-sync ──────────────────────────────────────────────────────
+        // If the server has measured enough captions to suggest a delay, and the
+        // user has not manually set one this session, apply it automatically.
+        //
+        // Hysteresis: only act when the suggestion differs from the current value
+        // by >= 5 s (server already applies its own 5 s / 3-min hysteresis, but a
+        // second gate here prevents spurious re-inits from floating-point noise).
+        //
+        // Re-init strategy: a full HLS re-init (destroy + recreate) is expensive
+        // and causes a brief black frame / audio gap.  We only do it when the
+        // difference is large (>= 10 s) — small corrections just update the config
+        // so HLS.js drifts naturally on the next manifest fetch.
+        if (!manualSync && Number.isFinite(data.suggested_sync)) {
+          const diff = Math.abs(data.suggested_sync - CONFIG.liveSyncDuration);
+          if (diff >= 5) {
+            CONFIG.liveSyncDuration = data.suggested_sync;
+            syncInput.value = data.suggested_sync;
+            store('syncDuration', data.suggested_sync);
+            scheduler.clear();
+            scheduler.resetStats();
+            if (diff >= 10) {
+              // Large jump: recreate the player with the new liveSyncDuration
+              initHLS();
+            }
+            // Small-to-medium correction (5-9 s): config updated, no re-init.
+            // HLS.js will converge to the new target latency on its own.
+          }
+        }
       };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };  // onclose does the retry
       ws.onclose = () => {
@@ -451,6 +488,7 @@
     $('btn-apply-sync').addEventListener('click', () => {
       const v = parseFloat(syncInput.value);
       if (!Number.isFinite(v) || v < 4 || v > 40) return;
+      manualSync = true;   // user took control — disable auto-sync for this session
       CONFIG.liveSyncDuration = v;
       store('syncDuration', v);
       scheduler.clear();

@@ -17,6 +17,7 @@ player is behind the live edge, so it can show the caption after
 ``player_latency - age_start`` seconds.  Using *ages* means server and browser
 clocks never have to agree.
 """
+from __future__ import annotations
 
 import math
 import re

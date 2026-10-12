@@ -25,9 +25,9 @@ HTTP reutilizável (pool de conexões) compartilhado entre ASR e tradução.
 | Etapa | Com `GROQ_API_KEY` (recomendado) | Sem `GROQ_API_KEY` (fallback local) |
 |---|---|---|
 | ASR | Groq `whisper-large-v3-turbo` (~0,1–0,3 s/frase) | `faster-whisper` CPU (~4–8 s/frase) |
-| Tradução PT→ES | Groq LLM `openai/gpt-oss-20b` (~0,3–0,7 s) | NLLB-200 CPU (~0,5–2 s) |
+| Tradução PT→ES | Groq LLM `openai/gpt-oss-20b` (~14–18 s) | NLLB-200 CPU (~0,5–2 s) |
 | VAD | Silero (com torch) ou `EnergyDetector` (sem torch, segmentação pior) | idem |
-| Latência total medida | ~10–15 s (dominada pelo buffering HLS) | ~10–15 s |
+| Latência total medida | ~25–45 s (dominada pela tradução + buffering HLS) | ~10–15 s (sem tradução, ou com tradução local rápida) |
 
 ### Como a sincronização funciona
 
@@ -54,7 +54,17 @@ Cada legenda registra isso no log:
 ```
 caption ready: speech started 7.4s ago … (seg 5.1s, ASR 0.3s, translation 0.7s)
 ```
-**1–2 s não bastam** com este desenho (reconhecimento por frases). Medido com Groq: 10–15 s.
+
+**Com Groq + tradução habilitada:**
+- Latência típica: 25–45 s (ASR rápido ~0.3–17s, mas tradução ~14–18s)
+- **Atraso recomendado: 35 s** (default do player)
+
+**Com modelos locais ou Groq sem tradução:**
+- Latência típica: 10–15 s
+- Atraso recomendado: 10–15 s
+
+O player ajusta automaticamente usando sincronização baseada em idade (`age_start`/`age_end`).
+Se >20% das legendas chegarem atrasadas, a barra de status avisará para aumentar o atraso.
 Veja `LATENCY_PROBLEM.md` para guia completo.
 
 ## Instalação
@@ -171,9 +181,9 @@ continue gerenciando esse token como quiser — apenas não o coloque em `.env.e
 |---|---|---|
 | `GROQ_API_KEY` | — | Chave da API. Quando preenchida, ativa Groq para ASR e tradução. Obtenha em https://console.groq.com/keys |
 | `GROQ_TRANSLATE_MODEL` | `openai/gpt-oss-20b` | Modelo LLM para PT→ES. Suporta `reasoning_effort`. Veja modelos disponíveis com `groq.models.list()` |
-| `GROQ_REASONING_EFFORT` | — | gpt-oss only: `off` (desativa raciocínio, mais rápido) \| `low` \| `medium` \| `high` (padrão Groq: medium). Raciocínio adiciona latência e tokens extras. |
+| `GROQ_REASONING_EFFORT` | `off` | gpt-oss only: `off` (desativa raciocínio, mais rápido, **recomendado para live**) \| `low` \| `medium` \| `high`. Raciocínio adiciona ~200–300ms mas consome tokens extras. |
 | `GROQ_TIMEOUT_S` | `8` | Timeout por requisição à Groq (s). Uma chamada travada para todo o pipeline |
-| `GROQ_MAX_RETRIES` | `1` | Retentativas do SDK em 429 / 5xx / erro de rede |
+| `GROQ_MAX_RETRIES` | `0` | Retentativas do SDK em 429 / 5xx / erro de rede |
 
 > **Nota:** `gpt-oss-20b` retorna raciocínio em um campo separado `.reasoning`; `max_tokens` conta apenas tokens de saída, não tokens de raciocínio. Com raciocínio habilitado, planeje ~200–300 tokens extras. Deixe `GROQ_REASONING_EFFORT=off` para desabilitar e acelerar.
 
@@ -221,7 +231,7 @@ continue gerenciando esse token como quiser — apenas não o coloque em `.env.e
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `ENABLE_TRANSLATION` | `true` | `false` = só PT, sem ES |
+| `ENABLE_TRANSLATION` | `false` | `false` = só PT, sem ES |
 | `TRANSLATION_BACKEND` | `groq` com chave, senão `nllb` | `groq` \| `nllb` \| `marian` (via inglês, não testado) \| `llm` |
 | `TRANSLATION_DEVICE` | `auto` | `auto` \| `cpu` \| `cuda` (só backends locais) |
 

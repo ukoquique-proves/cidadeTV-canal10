@@ -29,7 +29,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   // 1) ws:// scheme on http, one socket at start, HLS got the configured delay
   assert.strictEqual(sockets.length, 1);
   assert.strictEqual(sockets[0].url, 'ws://localhost:8000/captions');
-  assert.strictEqual(hlsInstances[0].cfg.liveSyncDuration, 10);
+  assert.strictEqual(hlsInstances[0].cfg.liveSyncDuration, 35);
 
   // 2) error + close (what a real browser fires on failure) must produce ONE reconnect, not two
   sockets[0].onerror(); sockets[0].onclose();

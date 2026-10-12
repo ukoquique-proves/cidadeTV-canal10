@@ -12,7 +12,13 @@ GET  /health            → health check
 
 WebSocket message format (server → client)::
 
-    {"pt": "...", "es": "...", "age_start": 7.4, "age_end": 4.1}
+    {"pt": "...", "es": "...", "age_start": 7.4, "age_end": 4.1,
+     "suggested_sync": 32.0}
+
+``suggested_sync`` is the recommended player delay in seconds, computed from
+a rolling window of recent ``age_start`` values (p90 + 3 s buffer).  The
+browser uses it to auto-adjust ``liveSyncDuration`` when the user has not set
+one manually.  It is omitted until enough captions have been seen (10+).
 
 (ages are seconds before "now" at the live edge — see captions.py)
 
@@ -29,8 +35,10 @@ relay into your network (SSRF), so:
   to the stream's host or to a host in PROXY_ALLOWED_HOSTS (comma separated;
   an entry starting with "." matches subdomains, e.g. ".logicahost.com.br").
 """
+from __future__ import annotations
 
 import asyncio
+import collections
 import hashlib
 import hmac
 import json
@@ -55,6 +63,79 @@ STATIC_DIR = Path(__file__).parent / "static"
 PLAYLIST_TYPE = "application/vnd.apple.mpegurl"
 
 _SECRET = secrets.token_bytes(32)
+
+
+# ---------------------------------------------------------------------------
+# Auto-sync: rolling window of age_start values → suggested player delay
+# ---------------------------------------------------------------------------
+
+class _AgeClock:
+    """Tracks recent caption age_start values and suggests a player delay.
+
+    Keeps the last ``maxlen`` values (one per caption piece).  Once ``min_samples``
+    are collected it computes a candidate delay: the 90th-percentile age_start
+    rounded up to the nearest second plus a ``_BUFFER_S`` safety margin.
+
+    Hysteresis rules (prevent rapid HLS re-inits):
+    - The suggestion only *changes* when the new candidate differs from the
+      last emitted value by >= ``_HYSTERESIS_S`` seconds.
+    - After a change is emitted, at least ``_COOLDOWN_S`` seconds must pass
+      before the next change is allowed.
+    - ``_MAX_SYNC`` is capped at 40 s to match the browser UI's input range
+      (4–40 s), preventing suggestions the player can't actually honour.
+    """
+    _BUFFER_S = 3       # seconds added on top of p90 so captions arrive early
+    _MIN_SYNC = 10      # never suggest below this (HLS floor)
+    _MAX_SYNC = 40      # never suggest above this — matches the UI's 4-40 s range
+    _HYSTERESIS_S = 5   # only change suggestion when it moves by at least this much
+    _COOLDOWN_S = 180   # minimum seconds between successive suggestion changes
+
+    def __init__(self, maxlen: int = 60, min_samples: int = 10) -> None:
+        self._ages: "collections.deque[float]" = collections.deque(maxlen=maxlen)
+        self._min_samples = min_samples
+        self._last_emitted: "float | None" = None   # last value sent to browsers
+        self._last_changed: float = 0.0             # wall time of last change
+
+    def record(self, age_start: float) -> None:
+        self._ages.append(age_start)
+
+    @property
+    def suggested_sync(self) -> "float | None":
+        if len(self._ages) < self._min_samples:
+            return None
+        sorted_ages = sorted(self._ages)
+        p90 = sorted_ages[int(len(self._ages) * 0.9)]
+        raw = p90 + self._BUFFER_S
+        # round up to nearest second, then clamp to UI range
+        rounded = float(int(raw) + (1 if raw % 1 else 0))
+        candidate = max(self._MIN_SYNC, min(self._MAX_SYNC, rounded))
+
+        # First suggestion — emit immediately
+        if self._last_emitted is None:
+            self._last_emitted = candidate
+            self._last_changed = _now()
+            return candidate
+
+        # Hysteresis: only update when change is large enough AND cooldown elapsed
+        import time as _time
+        diff = abs(candidate - self._last_emitted)
+        if diff >= self._HYSTERESIS_S and (_now() - self._last_changed) >= self._COOLDOWN_S:
+            logger.info(
+                "Auto-sync: suggesting %.0f s (was %.0f s, Δ=%.0f s)",
+                candidate, self._last_emitted, candidate - self._last_emitted,
+            )
+            self._last_emitted = candidate
+            self._last_changed = _now()
+
+        return self._last_emitted
+
+
+def _now() -> float:
+    import time as _time
+    return _time.time()
+
+
+_age_clock = _AgeClock()
 
 
 def stream_url() -> str:
@@ -130,7 +211,10 @@ _manager = ConnectionManager()
 
 
 async def push_caption(caption: dict) -> None:
-    await _manager.broadcast(caption)
+    _age_clock.record(caption.get("age_start", 0.0))
+    sync = _age_clock.suggested_sync
+    msg = {**caption, **({"suggested_sync": sync} if sync is not None else {})}
+    await _manager.broadcast(msg)
 
 
 # ---------------------------------------------------------------------------
