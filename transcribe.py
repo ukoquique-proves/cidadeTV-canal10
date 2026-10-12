@@ -33,6 +33,7 @@ WHISPER_COMPUTE  int8 | float16 | float32 | auto
 WHISPER_BEAM     1 = greedy/fastest; 2-5 more accurate
 WHISPER_PROMPT   initial prompt (channel names improve accuracy a lot)
 """
+from __future__ import annotations
 
 import asyncio
 import io
@@ -201,6 +202,17 @@ def _load_model():
     return _whisper_model
 
 
+def _preload_fallback() -> None:
+    """Best-effort background load of the local model used as Groq fallback."""
+    try:
+        _load_model()
+    except ImportError:
+        logger.warning("faster-whisper not installed — no local fallback if Groq "
+                       "hits its quota (pip install faster-whisper)")
+    except Exception as exc:  # noqa: BLE001 — download/offline problems
+        logger.warning("Could not preload local fallback model: %s", exc)
+
+
 def _is_hallucination(seg) -> bool:
     return _is_hallucination_text(
         seg.text.strip(),
@@ -243,6 +255,9 @@ def _transcribe_segment(pcm_bytes: bytes) -> list[dict]:
     Route to the right backend based on whether GROQ_API_KEY is set.
 
       GROQ_API_KEY present  → Groq cloud  (whisper-large-v3-turbo, ~100-300 ms)
+                               If Groq returns 429 / quota-exhausted, fall back
+                               to local faster-whisper automatically and re-try
+                               Groq after a cooldown period.
       GROQ_API_KEY absent   → local faster-whisper
 
     Returns [{"text", "start", "end"}, ...] relative to the segment start.
@@ -255,6 +270,158 @@ def _transcribe_segment(pcm_bytes: bytes) -> list[dict]:
     if os.environ.get("GROQ_API_KEY"):
         return _transcribe_segment_groq(pcm_bytes)
     return _transcribe_segment_local(pcm_bytes)
+
+
+# ---------------------------------------------------------------------------
+# Groq quota / rate-limit fallback state
+# ---------------------------------------------------------------------------
+
+# When Groq returns a quota-exhausted 429, we switch to local for a cooldown
+# period before retrying Groq.  This avoids hammering the API and means PT
+# subtitles continue uninterrupted via faster-whisper.
+_groq_blocked_until: float = 0.0          # wall time; 0 = not blocked
+_GROQ_COOLDOWN_S: float = 120.0           # retry Groq after this many seconds
+
+# Counters for fallback failure reporting (reset each time Groq is re-blocked).
+_fallback_skipped: int = 0          # segments dropped while local ASR unavailable
+_fallback_error_logged: bool = False  # log the root cause only once per cooldown
+
+
+def _groq_rate_limited(exc: BaseException) -> bool:
+    """True for any Groq 429 (per-minute, per-HOUR audio-seconds, per-day...).
+
+    Free-tier Whisper is capped at 20 req/min, 2 000 req/day, 7 200 audio-sec/HOUR
+    and 28 800 audio-sec/day (each request counts as >= 10 s).  A 24/7 stream hits
+    the hourly audio cap first, whose message does not say "requests per day" --
+    so match on the status code, not on the wording.
+    """
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    if any(c.__name__ == "RateLimitError" for c in type(exc).__mro__):
+        return True
+    return "rate limit" in str(exc).lower()
+
+
+def _groq_cooldown_s(exc: BaseException) -> float:
+    """How long to stay on local ASR: Groq's own Retry-After when present."""
+    try:
+        headers = exc.response.headers  # type: ignore[attr-defined]
+        retry_after = float(headers.get("retry-after"))
+    except Exception:  # noqa: BLE001 — no response/header/garbage: use the default
+        return _GROQ_COOLDOWN_S
+    return max(15.0, min(retry_after + 5.0, 3600.0))
+
+
+def _transcribe_with_fallback(pcm_bytes: bytes) -> list[dict]:
+    """
+    Try Groq first.  If it returns a rate-limit 429, switch to local
+    faster-whisper for the cooldown (Retry-After, default _GROQ_COOLDOWN_S), then retry Groq.
+    Falls through to Groq error re-raise for non-quota failures (timeout, 5xx…)
+    so the Transcriber's outer except clause can log them normally.
+    """
+    global _groq_blocked_until, _fallback_skipped, _fallback_error_logged
+
+    now = time.time()
+
+    # Still in cooldown — go straight to local
+    if now < _groq_blocked_until:
+        try:
+            result = _transcribe_segment_local(pcm_bytes)
+            # Local succeeded: if we had been skipping, report the count now.
+            if _fallback_skipped:
+                logger.error(
+                    "Local ASR back online after %d skipped segment(s) during Groq cooldown.",
+                    _fallback_skipped,
+                )
+                _fallback_skipped = 0
+                _fallback_error_logged = False
+            return result
+        except ImportError as exc:
+            # faster-whisper is not installed — nothing to fall back to.
+            _fallback_skipped += 1
+            if not _fallback_error_logged:
+                logger.error(
+                    "Local ASR fallback is unavailable (faster-whisper not installed): %s. "
+                    "Subtitles will be SILENT for the rest of the Groq cooldown "
+                    "(%.0f s remaining). "
+                    "Fix: pip install faster-whisper",
+                    exc,
+                    max(0.0, _groq_blocked_until - now),
+                    exc_info=True,
+                )
+                _fallback_error_logged = True
+            else:
+                logger.warning(
+                    "Segment skipped — local ASR unavailable (%d skipped so far).",
+                    _fallback_skipped,
+                )
+            return []
+        except Exception as exc:
+            _fallback_skipped += 1
+            if not _fallback_error_logged:
+                logger.error(
+                    "Local ASR fallback failed: %s. "
+                    "Subtitles will be SILENT for the rest of the Groq cooldown "
+                    "(%.0f s remaining).",
+                    exc,
+                    max(0.0, _groq_blocked_until - now),
+                    exc_info=True,
+                )
+                _fallback_error_logged = True
+            else:
+                logger.warning(
+                    "Segment skipped — local ASR still failing (%d skipped so far).",
+                    _fallback_skipped,
+                )
+            return []
+
+    # Try Groq
+    try:
+        result = _transcribe_segment_groq(pcm_bytes)
+        # Groq recovered — clear any stale fallback state from a previous cooldown.
+        _fallback_skipped = 0
+        _fallback_error_logged = False
+        return result
+    except Exception as exc:
+        if _groq_rate_limited(exc):
+            cooldown = _groq_cooldown_s(exc)
+            if now >= _groq_blocked_until:   # don't extend an existing cooldown
+                _groq_blocked_until = time.time() + cooldown
+                _fallback_skipped = 0
+                _fallback_error_logged = False
+                logger.warning(
+                    "Groq ASR rate-limited — switching to local faster-whisper "
+                    "for %.0fs. Groq will be retried automatically after that.",
+                    cooldown,
+                )
+            try:
+                return _transcribe_segment_local(pcm_bytes)
+            except ImportError as local_exc:
+                _fallback_skipped += 1
+                logger.error(
+                    "Groq rate-limited AND local ASR unavailable "
+                    "(faster-whisper not installed): %s. "
+                    "Subtitles will be SILENT until the cooldown ends (%.0f s). "
+                    "Fix: pip install faster-whisper",
+                    local_exc,
+                    max(0.0, _groq_blocked_until - now),
+                    exc_info=True,
+                )
+                _fallback_error_logged = True
+                return []
+            except Exception as local_exc:
+                _fallback_skipped += 1
+                logger.error(
+                    "Groq rate-limited AND local ASR fallback failed: %s. "
+                    "Subtitles will be SILENT until the cooldown ends (%.0f s).",
+                    local_exc,
+                    max(0.0, _groq_blocked_until - now),
+                    exc_info=True,
+                )
+                _fallback_error_logged = True
+                return []
+        # Non-rate-limit error — let the Transcriber log it
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -294,9 +461,13 @@ class Transcriber:
     async def _run(self) -> None:
         loop = asyncio.get_running_loop()
 
-        # Pre-load local model before first segment (no-op when using Groq)
         if not os.environ.get("GROQ_API_KEY"):
+            # Local-only: the model must be ready before the first segment.
             await loop.run_in_executor(None, _load_model)
+        else:
+            # Groq primary: warm the fallback model in the background so the first
+            # 429 doesn't stall live captions on a model download/load.
+            loop.run_in_executor(None, _preload_fallback)
 
         logger.info(
             "Transcriber started (backend=%s)",
@@ -317,7 +488,11 @@ class Transcriber:
                     self._idle_logged = False
 
                 try:
-                    subs = await loop.run_in_executor(None, _transcribe_segment, pcm_bytes)
+                    subs = await loop.run_in_executor(
+                        None,
+                        _transcribe_with_fallback if os.environ.get("GROQ_API_KEY") else _transcribe_segment,
+                        pcm_bytes,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     # rate limit / timeout / network: one line, no traceback flood
                     logger.error("Transcription error: %s", exc,

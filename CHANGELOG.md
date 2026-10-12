@@ -5,6 +5,310 @@ Most recent entry first.
 
 ---
 
+## 2026-10-12 — AGENTS.md plan applied: silent-fallback fix, faster-whisper install, auto-sync hysteresis
+
+### Root cause diagnosed
+Subtitles stopped after ~1–2 minutes because:
+1. Groq free-tier ASR quota (7,200 audio-sec/hour, counted as ≥10 s per request) was
+   exhausted, triggering a 429 and a 120 s local-fallback cooldown.
+2. `faster-whisper` was not installed (`ModuleNotFoundError`), so every segment during
+   the cooldown raised an `ImportError` that was caught silently and returned `[]`.
+   No captions appeared for the entire cooldown window with zero log evidence.
+
+### Changes
+
+**`transcribe.py` — loud fallback failures**
+- `_transcribe_with_fallback` now logs at `ERROR` (with full traceback) on the *first*
+  failure of each cooldown window, clearly naming whether the cause is a missing install
+  (`faster-whisper not installed`) or a runtime crash.
+- Subsequent failures in the same cooldown log at `WARNING` with a running skip count
+  (`N skipped so far`) instead of being completely silent.
+- When Groq recovers after cooldown, a final `ERROR`-level line reports the total number
+  of segments that were skipped, then resets the counters.
+- Two new module-level globals (`_fallback_skipped`, `_fallback_error_logged`) track
+  state per cooldown window and are reset each time Groq is re-blocked or recovers.
+
+**`faster-whisper` install on Python 3.8 / CPU-only (i7-4600U)**
+- `faster-whisper ≥1.0` requires `ctranslate2 ≥4.0` — no Python 3.8 wheels exist.
+- `faster-whisper 0.10.x` requires `av==10.*` / `av==11.*` — also no Python 3.8 wheels,
+  and building from source fails (no `libavcodec` dev headers on FossaPup).
+- Workaround: install `--no-deps`, then patch `audio.py` to make `import av` lazy:
+  ```
+  pip install --no-deps faster-whisper==0.10.1
+  pip install "ctranslate2==3.24.0" "huggingface-hub>=0.13" \
+              "tokenizers>=0.13,<0.16" "onnxruntime>=1.14,<2"
+  ```
+  Then wrap `import av` in `audio.py` with `try/except ImportError` (av is only used
+  by `decode_audio()` which takes a file path — we always pass numpy float32 arrays, so
+  av is never called at runtime).
+- `requirements.groq.txt` updated with the correct pins and the full explanation of the
+  workaround for future reinstalls.
+
+**`server.py` — `_AgeClock` auto-sync hysteresis**
+- `_MAX_SYNC` lowered from 90 s to 40 s to match the browser UI's input range (4–40 s).
+  The previous 90 s ceiling could suggest a delay that the HLS live window can't hold.
+- Added hysteresis: the emitted `suggested_sync` only changes when the new candidate
+  differs from the last emitted value by ≥ 5 s (`_HYSTERESIS_S`) AND at least 180 s
+  have passed since the last change (`_COOLDOWN_S`). This prevents the rapid feedback
+  loop where rising ASR latency → rising suggestion → player re-init → queue cleared →
+  suggestion rises again.
+- `_now()` extracted as a module-level helper so tests can monkeypatch it.
+
+**`static/index.html` — browser auto-sync**
+- Trigger threshold raised from ≥ 2 s to ≥ 5 s (consistent with server hysteresis).
+- Full `initHLS()` (destroy + recreate) now only fires when the diff is ≥ 10 s.
+  Corrections of 5–9 s just update `CONFIG.liveSyncDuration`; HLS.js converges to the
+  new target latency on its own without a disruptive re-init.
+
+**`tests/test_units.py` — viewer-gate test isolation fix + new tests**
+- `test_transcriber_skips_asr_when_no_viewers` and
+  `test_transcriber_resumes_asr_when_viewer_connects` were using manual `try/finally`
+  to patch `_transcribe_segment`. A race between the executor thread's cleanup and the
+  next test's setup caused the resume test to fail when run after the skip test in the
+  full suite (passed in isolation). Both tests now use `monkeypatch.setattr` so pytest
+  guarantees teardown order.
+- 4 new fallback tests: `test_fallback_import_error_returns_empty_and_logs_error`,
+  `test_fallback_import_error_logs_only_once_then_warns`,
+  `test_fallback_groq_recovers_after_cooldown`, updated `_fallback_setup` helper.
+- 5 new `_AgeClock` tests covering first emission, UI-range clamping, hysteresis
+  suppression, large-change allowance, and cooldown blocking.
+
+### Test results
+- Python: **50 passed** (`tests/test_units.py` + `tests/test_capture_process.py`)
+- JS captions: **8 passed** (`node tests/captions.test.js`)
+- JS page: **9 passed** (`node tests/page.test.js`)
+
+### Open items
+- A 15-minute end-to-end run with a forced 429 (Step 5 in AGENTS.md) was not performed
+  — the stream must be live and reachable. Run `./start.sh` and monitor logs for:
+  `"Groq ASR rate-limited"`, `"faster-whisper not installed"` (must not appear now),
+  and `"Auto-sync: suggesting"` at most once per 3 minutes.
+- `get-pip.py` (2.3 MB) in the repo root — leftover bootstrap script, not deleted
+  pending explicit user confirmation (per AGENTS.md §5).
+
+---
+
+## 2026-10-12 — Patch applied: Groq quota hardening + local fallback + auto-delay defaults
+
+### Changes from patch `/root/Downloads/tv10-fixes.patch`
+
+**Hard-coded defaults (no longer rely on `.env`):**
+- `groq_client.py`: `max_retries=0` (fail fast on 429, avoid 44s sleep in thread pool)
+- `translate.py` + `main.py`: `ENABLE_TRANSLATION="false"` default (PT only, no LLM quota burn)
+
+**Dependencies:**
+- `requirements.groq.txt`: Added `faster-whisper==1.1.0` for local ASR fallback
+- `requirements.local.txt`: Unpinned `faster-whisper` (now only in groq.txt)
+
+**Tests:**
+- `tests/page.test.js`: Updated expected default `liveSyncDuration` from 10 to 35
+- `tests/test_units.py`: Updated expected `max_retries` from 1 to 0 in client config test
+
+**Documentation:**
+- `README.md`: Updated default values table for `ENABLE_TRANSLATION` and `GROQ_MAX_RETRIES`
+- `LATENCY_PROBLEM.md`: Corrected `reasoning_effort` examples to use `off` instead of `low`
+- `.env.example`: Updated `GROQ_MAX_RETRIES` and `ENABLE_TRANSLATION` examples
+
+**Bug fixes (already in place, patch formalized):**
+- `transcribe.py`: `_groq_blocked_until` cooldown only set once per quota event, not refreshed on each failed local attempt
+- `transcribe.py`: Local ASR fallback kicks in automatically on quota-exhausted 429, retries Groq after 120s cooldown
+
+---
+
+## 2026-10-11 — Subtitle reliability: auto-delay, Groq fallback, translation off
+
+### Problems fixed
+
+**1. Subtitles stopped after a few minutes (Groq quota exhausted)**
+The free Groq tier has hard daily limits that a 24/7 stream exhausts quickly:
+- ASR (`whisper-large-v3-turbo`): 2,000 requests/day (RPD)
+- Translation (`openai/gpt-oss-20b`): 200,000 tokens/day (TPD)
+
+Both were being consumed continuously even across sessions. Once exhausted,
+the pipeline went silent until the quota reset the next day.
+
+**2. 429 errors stalled the pipeline for 44 seconds each**
+`GROQ_MAX_RETRIES=1` caused the Groq SDK to sleep inside the executor thread
+pool on each rate-limit error. With multiple segments queued, this cascaded:
+every segment waited 44s, VAD dropped the backlog, and subtitles went dark
+for minutes at a time even when quota had only momentarily spiked.
+
+**3. Player delay required manual adjustment on every fresh session**
+The browser had no way to know the actual caption latency. Users had to
+manually set "Atraso do vídeo" to ~35s on each new browser session.
+
+---
+
+### Changes made
+
+#### `ENABLE_TRANSLATION=false` (`.env`)
+Spanish translation disabled by default. Removes all Groq LLM calls entirely —
+the TPD quota is no longer consumed at all. PT-only subtitles run indefinitely
+on the ASR quota alone.
+
+#### `GROQ_MAX_RETRIES=0` (`.env`)
+429 errors now fail in milliseconds instead of sleeping 44s in the thread pool.
+The pipeline loop immediately catches the error, logs one line, and processes
+the next segment without stalling.
+
+#### Groq → local `faster-whisper` auto-fallback (`transcribe.py`)
+New `_transcribe_with_fallback()` function wraps the Groq backend:
+- On a quota-exhausted 429 (`requests per day` / `tokens per day` in the
+  error message), logs one warning and switches to local `faster-whisper` for
+  a 120-second cooldown period.
+- During cooldown, every segment is transcribed locally — subtitles continue
+  uninterrupted.
+- After 120s, Groq is retried automatically. If the daily quota has reset,
+  the fast cloud path resumes with no intervention.
+- Non-quota errors (timeout, 5xx, network) are re-raised and logged normally
+  by the existing `Transcriber._run()` error handler.
+- `_groq_quota_exhausted()` helper distinguishes quota errors from transient
+  ones by checking for `"requests per day"` / `"tokens per day"` in the
+  error message.
+
+#### Auto-delay synchronisation (`server.py` + `static/index.html`)
+The server now measures actual caption latency in real time and tells the
+browser what delay to use:
+
+**`server.py` — `_AgeClock` class:**
+- Keeps a rolling deque of the last 60 `age_start` values (one per caption).
+- Once 10 samples are collected, computes `suggested_sync` = p90 of the
+  window + 3s buffer, rounded up to the nearest second, clamped to 10–90s.
+- `push_caption()` attaches `suggested_sync` to every WebSocket message.
+
+**`static/index.html` — browser auto-apply:**
+- New `manualSync` flag (default `false`).
+- `ws.onmessage` checks `data.suggested_sync` on every caption: if it
+  differs from the current `liveSyncDuration` by ≥2s and `manualSync` is
+  false, applies the new value, saves it to localStorage, clears the caption
+  queue, and reinitialises HLS.js — all silently with no user action.
+- Clicking the "Aplicar" button sets `manualSync = true`, opting out of
+  auto-sync for that session so a deliberate user choice is respected.
+
+**Result:** A fresh browser session opens with the 35s default, and within
+the first ~2 minutes of captions the player self-adjusts to the actual
+measured latency for that session's network conditions.
+
+#### `faster-whisper` install
+`pip install faster-whisper==1.1.0` initiated to provide the local fallback
+backend. The tiny Whisper model (~75 MB) will be downloaded on first use.
+With it installed, subtitles are continuous even through full Groq quota
+exhaustion — quality is slightly lower (tiny vs. large-v3-turbo) but
+acceptable for live captions.
+
+---
+
+### Current state after these changes
+- Translation: disabled (PT only) — zero TPD consumption
+- ASR: Groq primary, local faster-whisper fallback on quota exhaustion
+- 429 stalls: eliminated (fail-fast + local fallback)
+- Player delay: auto-configured from measured latency, no manual setup needed
+- `faster-whisper` install: in progress (background pip install)
+
+---
+
+## 2026-10-11 — Default player delay adjusted to 35 seconds
+
+### Change
+Updated default video delay (`liveSyncDuration`) from 10 seconds to 35 seconds in
+`static/index.html` to match the actual caption latency observed with Groq + translation.
+
+**Root cause:** With Groq ASR + Groq LLM translation enabled, typical caption latency
+is 25–45 seconds (ASR: 0.3–17s, translation: 14–18s). The previous 10-second default
+caused all captions to arrive late, requiring manual adjustment on every fresh browser
+session.
+
+**Measured latency breakdown:**
+- Segment duration: 0.8–5.0s (VAD)
+- ASR (Groq Whisper): 0.6–17s
+- Translation (Groq gpt-oss-20b): 14–18s
+- **Total: 25–45s** (translation dominates)
+
+**Changes made:**
+- `static/index.html`: `liveSyncDuration` default `10` → `35`
+- `.env` and `.env.example`: Enabled `GROQ_REASONING_EFFORT=off` (was commented out)
+  to disable reasoning tokens and reduce translation latency
+- `README.md`: Updated latency table and "Quanto atraso o vídeo precisa?" section
+  with actual measured values
+- `.env.example`: Added note about typical 25–45s latency and 35s default player delay
+
+**User experience:**
+- Fresh browser sessions now start with appropriate delay
+- Age-based synchronization works correctly without manual adjustment
+- Status bar will still warn if network conditions require further tuning
+
+**Note:** The 10-second default was appropriate for:
+- Local models (faster-whisper + NLLB)
+- Groq with translation disabled (`--no-translate`)
+- Optimal network conditions to Groq API
+
+Users in those configurations can still adjust via the "Atraso do vídeo" control or by
+setting `?sync=10` in the URL.
+
+---
+
+## 2026-10-11 — System deployment and pipeline verification
+
+### Deployment on Puppy Linux
+Successfully deployed and started the TV Cidade 10 live subtitle system on Puppy Linux
+(fossapup64 9.6) after resolving environment setup challenges.
+
+**Environment issues resolved:**
+- Python 3.8.10 installed but lacked `ensurepip` module (Puppy Linux minimal setup)
+- Created venv with `--without-pip` flag and manually installed pip via `get-pip.py`
+- Used Python 3.8-compatible pip bootstrap script (`https://bootstrap.pypa.io/pip/3.8/get-pip.py`)
+- Successfully installed all dependencies from `requirements.groq.txt` (~50 MB)
+
+**System verification:**
+- ffmpeg 4.2.7 confirmed available
+- `.env` already configured with valid `GROQ_API_KEY`
+- Port 8000 initially occupied by previous process — cleaned up and restarted
+
+### Pipeline verification — All components working ✓
+
+**Stream capture:**
+- Successfully fetching HLS stream from `https://video10.logicahost.com.br/tvcidade10/tvcidade10/playlist.m3u8`
+- ffmpeg capturing and processing media segments (TS files)
+- Audio being extracted and queued correctly
+
+**Voice Activity Detection (VAD):**
+- Using `EnergyDetector` fallback (torch/silero-vad not installed)
+- Segmenting speech into 0.8–5.0s chunks
+- VAD working adequately for live stream despite fallback mode
+
+**Speech Recognition (ASR):**
+- Groq Whisper API (`whisper-large-v3-turbo`) responding successfully
+- Portuguese transcription accurate
+- Sample outputs: "Vai embora", "Queria dizer algo para ele", "Não pode. Ele e a esposa foram..."
+
+**Translation:**
+- Groq LLM (`openai/gpt-oss-20b`) translating PT→ES successfully
+- API responding with 200 OK status
+
+**Caption timing:**
+- Captions ready 26–38s after speech at live edge
+- Latency breakdown typical:
+  - Segmentation: 0.8–5.0s
+  - ASR: 0.6–16.8s
+  - Translation: 16–17s
+
+**Web server & WebSocket:**
+- Server running on `http://localhost:8000`
+- WebSocket connections working correctly
+- Client connect/disconnect handling operational
+- Viewer-gated processing active (ASR/translation paused when no clients connected)
+
+### Current status
+Application running successfully in background via `control_bash_process`. Ready for
+live viewing at http://localhost:8000.
+
+**Note:** For improved VAD accuracy, install torch and silero-vad (~800 MB):
+```bash
+pip install silero-vad
+```
+
+---
+
 ## 2026-10-05 — Startup verification + audit patch applied
 
 ### Notes

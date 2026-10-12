@@ -10,3 +10,24 @@ httpx==0.27.2               # async HTTP client for the HLS proxy
 
 python-dotenv==1.0.1        # loads .env into os.environ
 numpy>=1.24                 # audio array handling
+
+# Local ASR fallback used by transcribe.py when Groq's daily quota is exhausted (no torch needed).
+#
+# PYTHON 3.8 NOTE (FossaPup):
+#   faster-whisper >=1.0 requires ctranslate2 >=4.0 which has no Python 3.8 wheels.
+#   faster-whisper 0.10.x requires av==10.* / av==11.* — no Python 3.8 wheel either.
+#   Workaround: install WITHOUT the av dependency (av is only needed for decode_audio()
+#   which takes a file path; we always pass numpy float32 arrays directly, so av is
+#   never called at runtime), then patch audio.py to make the import lazy:
+#
+#     pip install --no-deps faster-whisper==0.10.1
+#     pip install "ctranslate2==3.24.0" "huggingface-hub>=0.13" \
+#                 "tokenizers>=0.13,<0.16" "onnxruntime>=1.14,<2"
+#
+#   The patch to /usr/local/lib/python3.8/dist-packages/faster_whisper/audio.py
+#   wraps 'import av' in a try/except ImportError so the package loads without av.
+#   See CHANGELOG.md for the exact patch.
+#
+# Python >=3.9: use faster-whisper==1.1.0 instead (pip install faster-whisper==1.1.0).
+faster-whisper==0.10.1
+ctranslate2==3.24.0
