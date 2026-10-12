@@ -9,7 +9,7 @@
 #   pip install -r requirements.local.txt    # installs only the local-model deps
 
 # ── Core ASR ─────────────────────────────────────────────────────────────────
-faster-whisper==1.1.1
+# faster-whisper is pinned in requirements.groq.txt (needed by the Groq fallback too)
 
 # ── Voice Activity Detection ─────────────────────────────────────────────────
 silero-vad==5.1.2           # Silero VAD with the model bundled (works offline)

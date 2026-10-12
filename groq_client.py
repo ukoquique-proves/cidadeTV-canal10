@@ -10,7 +10,7 @@ the stages run one segment at a time, so a hung call stalls everything behind it
 and the queues start dropping captions.  Defaults here are tighter and tunable:
 
   GROQ_TIMEOUT_S    per-request timeout in seconds   (default 8)
-  GROQ_MAX_RETRIES  SDK retries on 429/5xx/network   (default 1)
+  GROQ_MAX_RETRIES  SDK retries on 429/5xx/network   (default 0)
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def get_client():
 
     api_key = os.environ["GROQ_API_KEY"]
     timeout = _env_float("GROQ_TIMEOUT_S", 8.0)
-    retries = _env_int("GROQ_MAX_RETRIES", 1)
+    retries = _env_int("GROQ_MAX_RETRIES", 0)
     key = (Groq, api_key, timeout, retries)
     with _lock:
         client = _cache.get(key)

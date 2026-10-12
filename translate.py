@@ -36,6 +36,7 @@ Translator(in_queue, out_queue)
 translate_text(text: str) -> str
     Synchronous helper — useful for testing from the CLI.
 """
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -289,7 +290,7 @@ class Translator:
     def __init__(self, in_queue: asyncio.Queue, out_queue: asyncio.Queue) -> None:
         self.in_queue = in_queue
         self.out_queue = out_queue
-        self._enabled = os.environ.get("ENABLE_TRANSLATION", "true").lower() == "true"
+        self._enabled = os.environ.get("ENABLE_TRANSLATION", "false").lower() == "true"
         self._task: asyncio.Task | None = None
 
     def start(self) -> asyncio.Task:

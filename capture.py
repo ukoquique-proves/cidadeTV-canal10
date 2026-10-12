@@ -39,6 +39,7 @@ This prevents the stderr pipe from filling up (~64 KB) and blocking ffmpeg,
 which would block our stdout reads and stall the whole pipeline. The last 8 KB
 of stderr is kept for error reporting.
 """
+from __future__ import annotations
 
 import asyncio
 import logging

@@ -30,6 +30,7 @@ Lower MAX_SEGMENT_MS = lower latency (a segment can only be transcribed once it
 is complete) but more mid-sentence cuts.  5000 ms is a reasonable default:
 saves ~3 s of worst-case latency vs. 8000 ms with acceptable accuracy loss.
 """
+from __future__ import annotations
 
 import asyncio
 import logging
