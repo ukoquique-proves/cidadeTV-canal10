@@ -27,7 +27,7 @@ is generous for personal use.
 
 Local faster-whisper env vars (ignored when Groq is active)
 -----------------------------------------------------------
-WHISPER_MODEL    tiny | small | medium | large-v3  (auto: small/medium by device)
+WHISPER_MODEL    tiny | small | medium | large-v3  (auto: tiny/medium by device)
 WHISPER_DEVICE   cpu | cuda | auto  (default: auto-detect)
 WHISPER_COMPUTE  int8 | float16 | float32 | auto
 WHISPER_BEAM     1 = greedy/fastest; 2-5 more accurate
@@ -179,22 +179,93 @@ def _resolve_config() -> tuple[str, str, str]:
     compute = ("float16" if device == "cuda" else "int8") if raw_compute == "auto" else raw_compute
 
     raw_model = os.environ.get("WHISPER_MODEL", "auto").lower()
-    model_size = ("medium" if device == "cuda" else "small") if raw_model == "auto" else raw_model
+    # Default CPU model is "tiny": measured 0.25-0.76× real-time on i7-4600U.
+    # "small" is 2.5-5× real-time on the same CPU — segments queue faster than
+    # they are processed, causing cascading drops.  Set WHISPER_MODEL=small
+    # explicitly if you have a faster CPU.
+    model_size = ("medium" if device == "cuda" else "tiny") if raw_model == "auto" else raw_model
 
     return device, compute, model_size
+
+
+def _ensure_av_stub() -> None:
+    """Apply an in-process av stub so faster-whisper 0.10.x loads on Python 3.8.
+
+    faster-whisper 0.10.x does ``import av`` at module level in audio.py, which
+    is re-exported by __init__.py.  av has no Python 3.8 wheel and cannot be
+    built without libavcodec dev headers.  We never call decode_audio() — we
+    always pass numpy float32 arrays directly — so av is unused at runtime.
+
+    This function injects a minimal stub into sys.modules before the first
+    ``import faster_whisper`` so the package loads cleanly.  It is idempotent
+    and a no-op when av is already installed or when faster-whisper is not
+    present.  The stub only needs av.audio.resampler.AudioResampler,
+    av.audio.fifo.AudioFifo, av.open, and av.error.InvalidDataError — all used
+    only inside decode_audio() which we never call.
+    """
+    import sys
+    if "av" in sys.modules:
+        return  # real av (or stub) already present
+
+    try:
+        import importlib.util
+        if importlib.util.find_spec("faster_whisper") is None:
+            return  # faster_whisper not installed — nothing to stub for
+    except Exception:
+        return
+
+    # Build a minimal stub that satisfies faster_whisper.audio's top-level imports
+    # without providing any real functionality (decode_audio will raise if called).
+    import types
+
+    class _NotAvailable:
+        """Raised when decode_audio() is called without av installed."""
+        def __init__(self, *a, **kw):
+            raise RuntimeError(
+                "av is not installed; decode_audio() cannot be used. "
+                "Pass a numpy float32 array to WhisperModel.transcribe() instead."
+            )
+
+    # av.error.InvalidDataError (caught in _ignore_invalid_frames, a generator
+    # that is only entered from decode_audio — safe to stub as a plain Exception)
+    _error_mod = types.ModuleType("av.error")
+    _error_mod.InvalidDataError = Exception  # type: ignore[attr-defined]
+
+    # av.audio.resampler and av.audio.fifo — only used inside decode_audio()
+    _resampler_mod = types.ModuleType("av.audio.resampler")
+    _resampler_mod.AudioResampler = _NotAvailable  # type: ignore[attr-defined]
+    _fifo_mod = types.ModuleType("av.audio.fifo")
+    _fifo_mod.AudioFifo = _NotAvailable  # type: ignore[attr-defined]
+    _audio_mod = types.ModuleType("av.audio")
+    _audio_mod.resampler = _resampler_mod  # type: ignore[attr-defined]
+    _audio_mod.fifo = _fifo_mod  # type: ignore[attr-defined]
+
+    _av_mod = types.ModuleType("av")
+    _av_mod.audio = _audio_mod  # type: ignore[attr-defined]
+    _av_mod.error = _error_mod  # type: ignore[attr-defined]
+    _av_mod.open = _NotAvailable  # type: ignore[attr-defined]
+
+    sys.modules["av"] = _av_mod
+    sys.modules["av.audio"] = _audio_mod
+    sys.modules["av.audio.resampler"] = _resampler_mod
+    sys.modules["av.audio.fifo"] = _fifo_mod
+    sys.modules["av.error"] = _error_mod
+    logger.debug("av stub injected (faster-whisper on Python 3.8 without av wheel)")
 
 
 def _load_model():
     global _whisper_model
     if _whisper_model is None:
+        _ensure_av_stub()          # no-op if av is present or fw not installed
         from faster_whisper import WhisperModel
 
         device, compute, size = _resolve_config()
-        if device == "cpu" and size in ("medium", "large-v2", "large-v3", "large-v3-turbo"):
+        if device == "cpu" and size in ("small", "medium", "large-v2", "large-v3", "large-v3-turbo"):
             logger.warning(
-                "WHISPER_MODEL=%s on CPU will be very slow (~10-30 s per segment). "
-                "Consider WHISPER_MODEL=small, or add GROQ_API_KEY to use cloud ASR.",
+                "WHISPER_MODEL=%s on CPU will be slow (measured %s on i7-4600U). "
+                "Consider WHISPER_MODEL=tiny, or add GROQ_API_KEY to use cloud ASR.",
                 size,
+                ">5× real-time" if size != "small" else "2.5-5× real-time",
             )
         logger.info("Loading faster-whisper '%s' on %s (%s)…", size, device, compute)
         _whisper_model = WhisperModel(size, device=device, compute_type=compute)

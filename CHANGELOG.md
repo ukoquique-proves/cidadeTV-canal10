@@ -5,6 +5,69 @@ Most recent entry first.
 
 ---
 
+## 2026-10-12 — Post-review fixes: requirements markers, av stub, tiny model default
+
+### Problems fixed
+
+**requirements.groq.txt broke fresh installs on both Python versions**
+`faster-whisper==0.10.1` and `ctranslate2==3.24.0` were listed as plain
+requirements. On Python 3.8 `pip install -r` tried to pull `av==10.*` (no wheel
+→ source build → fails without libavcodec headers). On Python 3.9+ those pins are
+wrong (`ctranslate2==3.24.0` is the 3.8-only workaround; 3.9+ should use
+`faster-whisper==1.1.0`).
+
+Fix: `faster-whisper==1.1.0` is now gated with `python_version >= "3.9"`.
+The Python 3.8 procedure (install `--no-deps` + manual deps) is documented in a
+comment block only — not as live requirements that pip would try to satisfy.
+Verified: `pip install --dry-run -r requirements.groq.txt` on Python 3.8 skips
+`faster-whisper` entirely with no `av` resolution attempt.
+
+**audio.py stub lived only in the installed package**
+The `try/except ImportError` patch applied to
+`/usr/local/lib/python3.8/dist-packages/faster_whisper/audio.py` was erased on
+every `pip install --no-deps faster-whisper==0.10.1`. Nothing in the repo
+re-applied it, so a fresh install would silently break the fallback again.
+
+Fix: `_ensure_av_stub()` added to `transcribe.py`. It injects a minimal
+`av` stub into `sys.modules` before `faster_whisper` is imported, making the
+package load without `av` being installed. The stub provides only the symbols
+`faster_whisper.audio` references at module level; `decode_audio()` still raises
+`RuntimeError` if called (we never call it — we always pass numpy arrays).
+Properties:
+- Idempotent: no-op if `av` is already in `sys.modules` (real or stub).
+- No-op if `faster_whisper` is not installed.
+- Called once at the top of `_load_model()`.
+- The manual `audio.py` patch on disk is no longer necessary (but harmless if
+  present).
+
+**Default fallback model was too slow for real-time use**
+`WHISPER_MODEL=auto` resolved to `small` on CPU. Measured on the target machine
+(Intel i7-4600U, CPU-only, `ctranslate2` int8):
+
+| Model | 1 s audio | 2 s audio | 3 s audio | 5 s audio | RTF |
+|-------|-----------|-----------|-----------|-----------|-----|
+| tiny  | 0.76 s    | 0.76 s    | 0.75 s    | 3.15 s    | 0.25–0.76× ✓ |
+| small | 5.22 s    | 5.27 s    | 12.36 s   | 12.68 s   | 2.5–5× ✗ |
+
+`small` is 2.5–5× real-time: VAD segments arrive faster than they are
+transcribed, the queue fills, and segments are dropped — the same symptom as the
+original Groq quota exhaustion, now caused by the fallback itself.
+
+Fix: `auto` CPU default changed `small` → `tiny`. Set `WHISPER_MODEL=small`
+explicitly if the target machine is faster. The slow-model warning in `_load_model`
+now includes `small` in its list and cites the measured RTF.
+
+### Changes
+- `requirements.groq.txt`: `python_version >= "3.9"` marker on faster-whisper;
+  Python 3.8 manual steps in comments only.
+- `transcribe.py`: `_ensure_av_stub()` + call in `_load_model()`; CPU default
+  `small` → `tiny`; slow-model warning updated.
+
+### Tests
+50 Python passed, 8 JS captions passed, 9 JS page passed (unchanged).
+
+---
+
 ## 2026-10-12 — AGENTS.md plan applied: silent-fallback fix, faster-whisper install, auto-sync hysteresis
 
 ### Root cause diagnosed
